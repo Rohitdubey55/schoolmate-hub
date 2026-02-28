@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStudents, useBalances, useTransactions, useAddTransaction, useUpdateStudent, useConfig, useUpdateBalance } from '@/hooks/useSheetData';
 import { formatCurrency } from '@/lib/format';
-import { ArrowLeft, Printer, IndianRupee, MessageCircle, Edit2, Save, X, Loader2, Phone } from 'lucide-react';
+import { ArrowLeft, Printer, IndianRupee, MessageCircle, Edit2, Save, X, Loader2, Copy } from 'lucide-react';
 import { PAYMENT_MODES, CLASS_LIST } from '@/types/school';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -130,11 +130,11 @@ export default function StudentProfilePage() {
       } catch(e) {}
     }
     
-    // Try WhatsApp URL for regular browsers
+    // Open WhatsApp via location navigation (works in MIT App Inventor WebView)
     if (outstanding <= 0) { toast({ title: 'No pending dues' }); return; }
     const msg = buildFeeReminderMessage(schoolName, student['Student Name'], student['Father Name'], student.Class, outstanding, academicYear);
     const url = getWhatsAppUrl(phone, msg);
-    if (url) window.open(url, '_blank');
+    if (url) window.location.href = url;
     else toast({ title: 'Invalid phone number' });
   };
 
@@ -396,7 +396,7 @@ function StudentDetails({ student, editing, setEditing, onUpdate, isLoading, toa
                     className="h-6 w-6 rounded-lg bg-primary/10 flex items-center justify-center hover:bg-primary/20"
                     title="Copy number"
                   >
-                    <Phone className="h-3 w-3 text-primary" />
+                    <Copy className="h-3 w-3 text-primary" />
                   </button>
                 </div>
               ) : (

@@ -1,51 +1,62 @@
 export function printContent(title: string, html: string) {
-  const printWindow = window.open('', '_blank', 'width=400,height=600');
-  if (!printWindow) return;
-  
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>${title}</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, sans-serif; padding: 20px; font-size: 13px; color: #1a1a1a; }
-        h1 { font-size: 16px; text-align: center; margin-bottom: 4px; }
-        h2 { font-size: 14px; text-align: center; margin-bottom: 2px; font-weight: 500; }
-        .subtitle { text-align: center; font-size: 11px; color: #666; margin-bottom: 16px; }
-        .divider { border-top: 1px dashed #ccc; margin: 12px 0; }
-        .row { display: flex; justify-content: space-between; padding: 4px 0; }
-        .row .label { color: #666; }
-        .row .value { font-weight: 600; text-align: right; }
-        .total-row { font-size: 15px; font-weight: 700; border-top: 2px solid #333; padding-top: 8px; margin-top: 8px; }
-        .footer { text-align: center; font-size: 10px; color: #999; margin-top: 20px; }
-        .close-btn { 
-          position: fixed; 
-          bottom: 20px; 
-          left: 50%; 
-          transform: translateX(-50%);
-          background: #1e3a5f; 
-          color: white; 
-          border: none; 
-          padding: 12px 24px; 
-          border-radius: 8px; 
-          font-size: 14px; 
-          cursor: pointer;
-        }
-        @media print { 
-          body { padding: 10px; } 
-          .close-btn { display: none; }
-        }
-      </style>
-    </head>
-    <body>
-      ${html}
-      <div class="footer">Printed on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
-      <button class="close-btn" onclick="window.close()">Close</button>
-    </body>
-    </html>
-  `);
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(() => printWindow.print(), 300);
+  // Remove any existing print overlay
+  const existing = document.getElementById('__print_overlay__');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = '__print_overlay__';
+  overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: white; z-index: 99999;
+    overflow-y: auto; font-family: -apple-system, sans-serif;
+    padding: 20px 20px 100px;
+    font-size: 13px; color: #1a1a1a;
+  `;
+
+  overlay.innerHTML = `
+    <style>
+      #__print_overlay__ h1 { font-size: 16px; text-align: center; margin-bottom: 4px; }
+      #__print_overlay__ h2 { font-size: 14px; text-align: center; margin-bottom: 2px; font-weight: 500; }
+      #__print_overlay__ .subtitle { text-align: center; font-size: 11px; color: #666; margin-bottom: 16px; }
+      #__print_overlay__ .divider { border-top: 1px dashed #ccc; margin: 12px 0; }
+      #__print_overlay__ .row { display: flex; justify-content: space-between; padding: 4px 0; }
+      #__print_overlay__ .row .label { color: #666; }
+      #__print_overlay__ .row .value { font-weight: 600; text-align: right; }
+      #__print_overlay__ .total-row { font-size: 15px; font-weight: 700; border-top: 2px solid #333; padding-top: 8px; margin-top: 8px; }
+      #__print_overlay__ .footer { text-align: center; font-size: 10px; color: #999; margin-top: 20px; }
+      #__print_overlay__ .action-bar {
+        position: fixed; bottom: 0; left: 0; right: 0;
+        display: flex; gap: 12px; padding: 16px 20px;
+        background: white; border-top: 1px solid #eee;
+      }
+      #__print_overlay__ .btn {
+        flex: 1; padding: 14px; border: none; border-radius: 12px;
+        font-size: 15px; font-weight: 700; cursor: pointer;
+      }
+      #__print_overlay__ .btn-close { background: #f1f5f9; color: #1e3a5f; }
+      #__print_overlay__ .btn-print { background: #1e3a5f; color: white; }
+      @media print {
+        #__print_overlay__ .action-bar { display: none; }
+      }
+    </style>
+    ${html}
+    <div class="footer">Printed on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+    <div class="action-bar">
+      <button class="btn btn-close" id="__print_close__">✕ Close</button>
+      <button class="btn btn-print" id="__print_now__">🖨️ Print</button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  document.getElementById('__print_close__')?.addEventListener('click', () => {
+    overlay.remove();
+  });
+
+  document.getElementById('__print_now__')?.addEventListener('click', () => {
+    window.print();
+  });
+
+  // Scroll to top of overlay
+  overlay.scrollTop = 0;
 }
