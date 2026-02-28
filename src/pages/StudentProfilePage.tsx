@@ -176,15 +176,22 @@ export default function StudentProfilePage() {
         )}
 
         {/* Student Details */}
-        <StudentDetails student={student} editing={editing} setEditing={setEditing} onUpdate={async (data) => {
-          try {
-            await updateStudentMutation.mutateAsync(data);
-            toast({ title: 'Student updated' });
-            setEditing(false);
-          } catch (e: any) {
-            toast({ title: 'Error', description: e.message, variant: 'destructive' });
-          }
-        }} isLoading={updateStudentMutation.isPending} />
+        <StudentDetails 
+          student={student} 
+          editing={editing} 
+          setEditing={setEditing} 
+          toast={toast}
+          onUpdate={async (data) => {
+            try {
+              await updateStudentMutation.mutateAsync(data);
+              toast({ title: 'Student updated' });
+              setEditing(false);
+            } catch (e: any) {
+              toast({ title: 'Error', description: e.message, variant: 'destructive' });
+            }
+          }} 
+          isLoading={updateStudentMutation.isPending} 
+        />
 
         {/* Transaction History */}
         <div className="space-y-2">
@@ -275,9 +282,9 @@ function SummaryRow({ label, value, bold, color }: { label: string; value: strin
   );
 }
 
-function StudentDetails({ student, editing, setEditing, onUpdate, isLoading }: {
+function StudentDetails({ student, editing, setEditing, onUpdate, isLoading, toast }: {
   student: StudentRow; editing: boolean; setEditing: (v: boolean) => void;
-  onUpdate: (data: Record<string, any>) => void; isLoading: boolean;
+  onUpdate: (data: Record<string, any>) => void; isLoading: boolean; toast?: any;
 }) {
   const [form, setForm] = useState({
     studentName: student['Student Name'] || '',
@@ -355,10 +362,24 @@ function StudentDetails({ student, editing, setEditing, onUpdate, isLoading }: {
               )
             ) : (
               d.isPhone && d.value && d.value !== '-' ? (
-                <a href={`tel:${d.value}`} className="font-semibold text-foreground text-right hover:text-primary hover:underline flex items-center gap-1 justify-end">
-                  <Phone className="h-3 w-3" />
-                  {d.value}
-                </a>
+                <div className="flex items-center gap-2">
+                  <a 
+                    href={`tel:${String(d.value).replace(/\D/g, '')}`}
+                    className="font-semibold text-foreground hover:text-primary hover:underline"
+                  >
+                    {d.value}
+                  </a>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(d.value as string);
+                      if (toast) toast({ title: 'Phone number copied!' });
+                    }}
+                    className="h-6 w-6 rounded-lg bg-primary/10 flex items-center justify-center hover:bg-primary/20"
+                    title="Copy number"
+                  >
+                    <Phone className="h-3 w-3 text-primary" />
+                  </button>
+                </div>
               ) : (
                 <span className="font-semibold text-foreground text-right">{d.value}</span>
               )

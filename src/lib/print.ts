@@ -19,12 +19,29 @@ export function printContent(title: string, html: string) {
         .row .value { font-weight: 600; text-align: right; }
         .total-row { font-size: 15px; font-weight: 700; border-top: 2px solid #333; padding-top: 8px; margin-top: 8px; }
         .footer { text-align: center; font-size: 10px; color: #999; margin-top: 20px; }
-        @media print { body { padding: 10px; } }
+        .close-btn { 
+          position: fixed; 
+          bottom: 20px; 
+          left: 50%; 
+          transform: translateX(-50%);
+          background: #1e3a5f; 
+          color: white; 
+          border: none; 
+          padding: 12px 24px; 
+          border-radius: 8px; 
+          font-size: 14px; 
+          cursor: pointer;
+        }
+        @media print { 
+          body { padding: 10px; } 
+          .close-btn { display: none; }
+        }
       </style>
     </head>
     <body>
       ${html}
       <div class="footer">Printed on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+      <button class="close-btn" onclick="window.close()">Close</button>
     </body>
     </html>
   `);
