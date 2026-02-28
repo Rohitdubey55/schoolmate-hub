@@ -120,6 +120,17 @@ export default function StudentProfilePage() {
 
   const handleWhatsApp = () => {
     if (!phone) { toast({ title: 'No mobile number available' }); return; }
+    
+    // Try App Inventor interface first
+    const android = (window as any).Android;
+    if (android && android.makeCall) {
+      try {
+        android.makeCall(phone);
+        return;
+      } catch(e) {}
+    }
+    
+    // Try WhatsApp URL for regular browsers
     if (outstanding <= 0) { toast({ title: 'No pending dues' }); return; }
     const msg = buildFeeReminderMessage(schoolName, student['Student Name'], student['Father Name'], student.Class, outstanding, academicYear);
     const url = getWhatsAppUrl(phone, msg);
@@ -363,12 +374,20 @@ function StudentDetails({ student, editing, setEditing, onUpdate, isLoading, toa
             ) : (
               d.isPhone && d.value && d.value !== '-' ? (
                 <div className="flex items-center gap-2">
-                  <a 
-                    href={`tel:${String(d.value).replace(/\D/g, '')}`}
-                    className="font-semibold text-foreground hover:text-primary hover:underline"
+                  <button 
+                    onClick={() => {
+                      const phoneNum = String(d.value).replace(/\D/g, '');
+                      const android = (window as any).Android;
+                      if (android && android.makeCall) {
+                        android.makeCall(phoneNum);
+                      } else {
+                        window.location.href = `tel:${phoneNum}`;
+                      }
+                    }}
+                    className="font-semibold text-primary hover:underline"
                   >
                     {d.value}
-                  </a>
+                  </button>
                   <button 
                     onClick={() => {
                       navigator.clipboard.writeText(d.value as string);
