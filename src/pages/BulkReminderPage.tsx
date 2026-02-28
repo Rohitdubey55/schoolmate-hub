@@ -3,7 +3,8 @@ import { useBalances, useStudents, useConfig } from '@/hooks/useSheetData';
 import { formatCurrency } from '@/lib/format';
 import { ArrowLeft, MessageCircle, CheckSquare, Square, Loader2, Send } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { getWhatsAppUrl, buildFeeReminderMessage } from '@/lib/whatsapp';
+import { buildFeeReminderMessage } from '@/lib/whatsapp';
+import { sendNativeAction } from '@/lib/native-bridge';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { CLASS_LIST } from '@/types/school';
@@ -65,20 +66,17 @@ export default function BulkReminderPage() {
   const handleSendBulk = async () => {
     const toSend = eligibleStudents.filter(s => selected.has(s.rollNo));
     if (toSend.length === 0) { toast({ title: 'Select at least one student' }); return; }
-    
+
     setSending(true);
     let sent = 0;
     for (const s of toSend) {
       const msg = buildFeeReminderMessage(schoolName, s.name, s.fatherName, s.className, s.balance, academicYear);
-      const url = getWhatsAppUrl(s.phone, msg);
-      if (url) {
-        window.open(url, '_blank');
-        sent++;
-        await new Promise(r => setTimeout(r, 800));
-      }
+      sendNativeAction({ action: 'whatsapp', phone: `91${s.phone}`, text: msg });
+      sent++;
+      await new Promise(r => setTimeout(r, 1200));
     }
     setSending(false);
-    toast({ title: `Opened ${sent} WhatsApp reminders` });
+    toast({ title: `Sent ${sent} WhatsApp reminders` });
   };
 
   if (loadingBal || loadingStudents) {

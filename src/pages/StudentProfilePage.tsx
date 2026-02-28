@@ -10,8 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { getWhatsAppUrl, buildFeeReminderMessage } from '@/lib/whatsapp';
+import { buildFeeReminderMessage } from '@/lib/whatsapp';
 import { printContent } from '@/lib/print';
+import { sendNativeAction } from '@/lib/native-bridge';
 import type { BalanceRow, TransactionRow, StudentRow } from '@/lib/api';
 
 export default function StudentProfilePage() {
@@ -120,22 +121,11 @@ export default function StudentProfilePage() {
 
   const handleWhatsApp = () => {
     if (!phone) { toast({ title: 'No mobile number available' }); return; }
-    
-    // Try App Inventor interface first
-    const android = (window as any).Android;
-    if (android && android.makeCall) {
-      try {
-        android.makeCall(phone);
-        return;
-      } catch(e) {}
-    }
-    
-    // Open WhatsApp via location navigation (works in MIT App Inventor WebView)
     if (outstanding <= 0) { toast({ title: 'No pending dues' }); return; }
+    const cleaned = phone.replace(/\D/g, '').slice(-10);
+    if (cleaned.length !== 10) { toast({ title: 'Invalid phone number' }); return; }
     const msg = buildFeeReminderMessage(schoolName, student['Student Name'], student['Father Name'], student.Class, outstanding, academicYear);
-    const url = getWhatsAppUrl(phone, msg);
-    if (url) window.location.href = url;
-    else toast({ title: 'Invalid phone number' });
+    sendNativeAction({ action: 'whatsapp', phone: `91${cleaned}`, text: msg });
   };
 
   return (
@@ -187,10 +177,10 @@ export default function StudentProfilePage() {
         )}
 
         {/* Student Details */}
-        <StudentDetails 
-          student={student} 
-          editing={editing} 
-          setEditing={setEditing} 
+        <StudentDetails
+          student={student}
+          editing={editing}
+          setEditing={setEditing}
           toast={toast}
           onUpdate={async (data) => {
             try {
@@ -200,8 +190,8 @@ export default function StudentProfilePage() {
             } catch (e: any) {
               toast({ title: 'Error', description: e.message, variant: 'destructive' });
             }
-          }} 
-          isLoading={updateStudentMutation.isPending} 
+          }}
+          isLoading={updateStudentMutation.isPending}
         />
 
         {/* Transaction History */}
@@ -374,21 +364,16 @@ function StudentDetails({ student, editing, setEditing, onUpdate, isLoading, toa
             ) : (
               d.isPhone && d.value && d.value !== '-' ? (
                 <div className="flex items-center gap-2">
-                  <button 
+                  <button
                     onClick={() => {
                       const phoneNum = String(d.value).replace(/\D/g, '');
-                      const android = (window as any).Android;
-                      if (android && android.makeCall) {
-                        android.makeCall(phoneNum);
-                      } else {
-                        window.location.href = `tel:${phoneNum}`;
-                      }
+                      sendNativeAction({ action: 'dial', phone: phoneNum });
                     }}
                     className="font-semibold text-primary hover:underline"
                   >
                     {d.value}
                   </button>
-                  <button 
+                  <button
                     onClick={() => {
                       navigator.clipboard.writeText(d.value as string);
                       if (toast) toast({ title: 'Phone number copied!' });
