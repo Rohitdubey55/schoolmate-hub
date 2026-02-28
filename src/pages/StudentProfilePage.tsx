@@ -1,0 +1,430 @@
+import { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useStudents, useBalances, useTransactions, useAddTransaction, useUpdateStudent, useConfig, useUpdateBalance } from '@/hooks/useSheetData';
+import { formatCurrency } from '@/lib/format';
+import { ArrowLeft, Printer, IndianRupee, MessageCircle, Edit2, Save, X, Loader2, Phone } from 'lucide-react';
+import { PAYMENT_MODES, CLASS_LIST } from '@/types/school';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { getWhatsAppUrl, buildFeeReminderMessage } from '@/lib/whatsapp';
+import { printContent } from '@/lib/print';
+import type { BalanceRow, TransactionRow, StudentRow } from '@/lib/api';
+
+export default function StudentProfilePage() {
+  const { rollNo } = useParams<{ rollNo: string }>();
+  const navigate = useNavigate();
+  const { data: students = [], isLoading: isStudentsLoading } = useStudents();
+  const { data: balances = [] } = useBalances();
+  const { data: transactions = [] } = useTransactions();
+  const { data: config = [] } = useConfig();
+  const addTxnMutation = useAddTransaction();
+  const updateStudentMutation = useUpdateStudent();
+  const updateBalanceMutation = useUpdateBalance();
+  const [showCollect, setShowCollect] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const { toast } = useToast();
+
+  // Handle both numeric roll numbers (9014) and string roll numbers (UKG011)
+  const roll = rollNo ? (isNaN(Number(rollNo)) ? rollNo : Number(rollNo)) : undefined;
+  console.log('[StudentProfile] rollNo:', rollNo, 'roll:', roll, 'students:', students.length);
+  const student = roll ? students.find(s => String(s['Roll No.']) === String(roll)) : undefined;
+  const balance = roll ? balances.find(b => String(b['Roll No.']) === String(roll)) : undefined;
+  const studentTxns = roll ? transactions
+    .filter(t => String(t['Roll No.']) === String(roll))
+    .sort((a, b) => new Date(b.Date || b.CreatedAt).getTime() - new Date(a.Date || a.CreatedAt).getTime()) : [];
+
+  const schoolName = String(config.find(c => c.Key === 'school_name')?.Value || 'K D Memorial');
+  const academicYear = String(config.find(c => c.Key === 'academic_year')?.Value || '2025-26');
+
+  if (isStudentsLoading) {
+    return (
+      <div className="p-4">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-primary mb-4 font-medium">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
+        <div className="bg-card rounded-2xl p-8 neu-raised text-center">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!student) {
+    return (
+      <div className="p-4">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-primary mb-4 font-medium">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
+        <div className="bg-card rounded-2xl p-8 neu-raised text-center">
+          <p className="text-muted-foreground">Student not found</p>
+        </div>
+      </div>
+    );
+  }
+
+  const outstanding = Number(balance?.Balance) || 0;
+  const phone = String(student.Mobile || '');
+
+  const handlePrintFinancial = () => {
+    if (!balance) return;
+    const html = `
+      <h1>${schoolName}</h1>
+      <div class="subtitle">Financial Statement — ${academicYear}</div>
+      <div class="divider"></div>
+      <div class="row"><span class="label">Student</span><span class="value">${student['Student Name']}</span></div>
+      <div class="row"><span class="label">Father</span><span class="value">${student['Father Name']}</span></div>
+      <div class="row"><span class="label">Class</span><span class="value">${student.Class}</span></div>
+      <div class="row"><span class="label">Roll No.</span><span class="value">${student['Roll No.']}</span></div>
+      <div class="divider"></div>
+      <div class="row"><span class="label">Prev Balance</span><span class="value">${formatCurrency(Number(balance['Balance\nUpto\nDec 2025']) || 0)}</span></div>
+      <div class="row"><span class="label">Tuition Fee</span><span class="value">${formatCurrency(Number(balance['Fee\nDec. to\nMarch']) || 0)}</span></div>
+      <div class="row"><span class="label">Van Fee</span><span class="value">${formatCurrency(Number(balance['Van\nFee Upto\nMarch']) || 0)}</span></div>
+      <div class="row"><span class="label">Exam/Other</span><span class="value">${formatCurrency(Number(balance['Ot\nExam-200\nR-Card-200']) || 0)}</span></div>
+      <div class="row total-row"><span class="label">Total</span><span class="value">${formatCurrency(Number(balance.Total) || 0)}</span></div>
+      <div class="row"><span class="label">Received</span><span class="value" style="color:green">${formatCurrency(Number(balance['Rec.']) || 0)}</span></div>
+      <div class="row total-row"><span class="label">Balance Due</span><span class="value" style="color:${outstanding > 0 ? 'red' : 'green'}">${formatCurrency(outstanding)}</span></div>
+    `;
+    printContent(`Financial - ${student['Student Name']}`, html);
+  };
+
+  const handlePrintLastTxn = () => {
+    const last = studentTxns[0];
+    if (!last) { toast({ title: 'No transactions found' }); return; }
+    const balanceDue = Number(balance?.Balance) || 0;
+    const html = `
+      <h1>${schoolName}</h1>
+      <div class="subtitle">Fee Receipt — ${academicYear}</div>
+      <div class="divider"></div>
+      <div class="row"><span class="label">Receipt No.</span><span class="value">${last['Receipt No.']}</span></div>
+      <div class="row"><span class="label">Date</span><span class="value">${last.Date}</span></div>
+      <div class="divider"></div>
+      <div class="row"><span class="label">Student</span><span class="value">${student['Student Name']}</span></div>
+      <div class="row"><span class="label">Father</span><span class="value">${student['Father Name']}</span></div>
+      <div class="row"><span class="label">Class</span><span class="value">${student.Class}</span></div>
+      <div class="row"><span class="label">Roll No.</span><span class="value">${student['Roll No.']}</span></div>
+      <div class="divider"></div>
+      <div class="row"><span class="label">Total Fees</span><span class="value">${formatCurrency(Number(balance?.Total) || 0)}</span></div>
+      <div class="row"><span class="label">Total Received</span><span class="value" style="color:green">${formatCurrency(Number(balance?.['Rec.']) || 0)}</span></div>
+      <div class="row total-row"><span class="label">Amount Paid</span><span class="value" style="color:green">${formatCurrency(Number(last.Amount))}</span></div>
+      <div class="row"><span class="label">Mode</span><span class="value">${last.Mode}</span></div>
+      ${last.Remarks ? `<div class="row"><span class="label">Remarks</span><span class="value">${last.Remarks}</span></div>` : ''}
+      <div class="divider"></div>
+      <div class="row total-row"><span class="label">Balance Due</span><span class="value" style="color:${balanceDue > 0 ? 'red' : 'green'}">${formatCurrency(balanceDue)}</span></div>
+    `;
+    printContent(`Receipt - ${last['Receipt No.']}`, html);
+  };
+
+  const handleWhatsApp = () => {
+    if (!phone) { toast({ title: 'No mobile number available' }); return; }
+    if (outstanding <= 0) { toast({ title: 'No pending dues' }); return; }
+    const msg = buildFeeReminderMessage(schoolName, student['Student Name'], student['Father Name'], student.Class, outstanding, academicYear);
+    const url = getWhatsAppUrl(phone, msg);
+    if (url) window.open(url, '_blank');
+    else toast({ title: 'Invalid phone number' });
+  };
+
+  return (
+    <div className="animate-float-in">
+      {/* Header */}
+      <div className="bg-card mx-4 mt-4 rounded-2xl p-5 neu-float">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-muted-foreground text-sm mb-3 font-medium">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
+        <div className="flex items-center gap-3">
+          <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <span className="text-xl font-bold text-primary">{(student['Student Name'] || '?').charAt(0)}</span>
+          </div>
+          <div>
+            <h1 className="text-lg font-extrabold text-foreground tracking-tight">{student['Student Name']}</h1>
+            <p className="text-[11px] text-muted-foreground">Roll #{student['Roll No.']} · {student.Class}</p>
+            <p className="text-[10px] text-muted-foreground/70">S/o {student['Father Name']}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Quick Actions */}
+        <div className="grid grid-cols-4 gap-2">
+          <ActionButton icon={<Printer className="h-4 w-4" />} label="Print Status" onClick={handlePrintFinancial} />
+          <ActionButton icon={<IndianRupee className="h-4 w-4" />} label="Collect Fee" onClick={() => setShowCollect(true)} color="success" />
+          <ActionButton icon={<Printer className="h-4 w-4" />} label="Last Receipt" onClick={handlePrintLastTxn} />
+          <ActionButton icon={<MessageCircle className="h-4 w-4" />} label="WhatsApp" onClick={handleWhatsApp} color="success" />
+        </div>
+
+        {/* Financial Summary */}
+        {balance && (
+          <div className="bg-card rounded-2xl p-4 space-y-2 neu-raised">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Financial Summary</h3>
+            <div className="space-y-1 text-sm">
+              <SummaryRow label="Previous Balance" value={formatCurrency(Number(balance['Balance\nUpto\nDec 2025']) || 0)} />
+              <SummaryRow label="Tuition Fee" value={formatCurrency(Number(balance['Fee\nDec. to\nMarch']) || 0)} />
+              <SummaryRow label="Van Fee" value={formatCurrency(Number(balance['Van\nFee Upto\nMarch']) || 0)} />
+              <SummaryRow label="Exam/Other" value={formatCurrency(Number(balance['Ot\nExam-200\nR-Card-200']) || 0)} />
+              <div className="border-t border-border/50 pt-1">
+                <SummaryRow label="Total" value={formatCurrency(Number(balance.Total) || 0)} bold />
+              </div>
+              <SummaryRow label="Received" value={formatCurrency(Number(balance['Rec.']) || 0)} color="success" />
+              <div className="border-t-2 border-foreground/20 pt-1">
+                <SummaryRow label="Balance Due" value={formatCurrency(outstanding)} color={outstanding > 0 ? 'destructive' : 'success'} bold />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Student Details */}
+        <StudentDetails student={student} editing={editing} setEditing={setEditing} onUpdate={async (data) => {
+          try {
+            await updateStudentMutation.mutateAsync(data);
+            toast({ title: 'Student updated' });
+            setEditing(false);
+          } catch (e: any) {
+            toast({ title: 'Error', description: e.message, variant: 'destructive' });
+          }
+        }} isLoading={updateStudentMutation.isPending} />
+
+        {/* Transaction History */}
+        <div className="space-y-2">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Payment History ({studentTxns.length})</h3>
+          {studentTxns.length === 0 && (
+            <div className="bg-card rounded-2xl p-6 neu-raised-sm text-center">
+              <p className="text-sm text-muted-foreground">No payments recorded</p>
+            </div>
+          )}
+          {studentTxns.map((txn, i) => (
+            <div key={i} className="bg-card rounded-2xl p-4 neu-raised-sm flex items-center justify-between animate-float-in" style={{ animationDelay: `${i * 50}ms` }}>
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-xl bg-success/10 flex items-center justify-center">
+                  <IndianRupee className="h-4 w-4 text-success" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-foreground">{txn['Receipt No.']}</p>
+                  <p className="text-[10px] text-muted-foreground">{txn.Date} · {txn.Mode}</p>
+                  {txn.Remarks && <p className="text-[9px] text-muted-foreground/70">{txn.Remarks}</p>}
+                </div>
+              </div>
+              <p className="text-sm font-bold text-success">{formatCurrency(Number(txn.Amount))}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Collect Fee Dialog */}
+      <CollectFeeForStudentDialog
+        open={showCollect}
+        onClose={() => setShowCollect(false)}
+        student={student}
+        onAdd={async (data) => {
+          try {
+            await addTxnMutation.mutateAsync(data);
+            if (balance?.id) {
+              const currentRec = Number(balance['Rec.']) || 0;
+              const currentTotal = Number(balance.Total) || 0;
+              const newRec = currentRec + Number(data.Amount);
+              const newBalance = currentTotal - newRec;
+              await updateBalanceMutation.mutateAsync({
+                id: balance.id,
+                'Rec.': newRec,
+                Balance: newBalance,
+                'Last Payment': data.Date || new Date().toISOString().split('T')[0],
+                UpdatedAt: new Date().toISOString(),
+              });
+            }
+            toast({ title: 'Payment recorded' });
+            setShowCollect(false);
+          } catch (e: any) {
+            toast({ title: 'Error', description: e.message, variant: 'destructive' });
+          }
+        }}
+        isLoading={addTxnMutation.isPending}
+      />
+    </div>
+  );
+}
+
+function ActionButton({ icon, label, onClick, color = 'primary' }: { icon: React.ReactNode; label: string; onClick: () => void; color?: string }) {
+  const bgMap: Record<string, string> = {
+    primary: 'bg-primary/10',
+    success: 'bg-success/10',
+    destructive: 'bg-destructive/10',
+  };
+  const textMap: Record<string, string> = {
+    primary: 'text-primary',
+    success: 'text-success',
+    destructive: 'text-destructive',
+  };
+  return (
+    <button onClick={onClick} className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-card neu-raised-sm neu-hover">
+      <div className={`h-8 w-8 rounded-xl ${bgMap[color] || bgMap.primary} flex items-center justify-center`}>
+        <div className={textMap[color] || textMap.primary}>{icon}</div>
+      </div>
+      <span className="text-[9px] font-semibold text-foreground">{label}</span>
+    </button>
+  );
+}
+
+function SummaryRow({ label, value, bold, color }: { label: string; value: string; bold?: boolean; color?: string }) {
+  return (
+    <div className="flex justify-between">
+      <span className={`text-muted-foreground ${bold ? 'font-semibold text-foreground' : ''}`}>{label}</span>
+      <span className={`${bold ? 'font-bold' : 'font-medium'} ${color ? `text-${color}` : 'text-foreground'}`}>{value}</span>
+    </div>
+  );
+}
+
+function StudentDetails({ student, editing, setEditing, onUpdate, isLoading }: {
+  student: StudentRow; editing: boolean; setEditing: (v: boolean) => void;
+  onUpdate: (data: Record<string, any>) => void; isLoading: boolean;
+}) {
+  const [form, setForm] = useState({
+    studentName: student['Student Name'] || '',
+    fatherName: student['Father Name'] || '',
+    mobile: String(student.Mobile || ''),
+    email: student.Email || '',
+    address: student.Address || '',
+    class: student.Class || '',
+    dob: student['Date of Birth'] || '',
+    admissionDate: student['Admission Date'] || '',
+    status: student.Status || 'Active',
+  });
+
+  const handleSave = () => {
+    onUpdate({
+      id: student.id,
+      'Roll No.': student['Roll No.'],
+      'Student Name': form.studentName.trim(),
+      'Father Name': form.fatherName.trim(),
+      Mobile: form.mobile,
+      Email: form.email,
+      Address: form.address,
+      Class: form.class,
+      'Date of Birth': form.dob,
+      'Admission Date': form.admissionDate,
+      Status: form.status,
+    });
+  };
+
+  const details = [
+    { label: 'Class', value: student.Class, field: 'class', type: 'select' },
+    { label: 'Father\'s Name', value: student['Father Name'], field: 'fatherName' },
+    { label: 'Mobile', value: String(student.Mobile || '-'), field: 'mobile', type: 'tel', isPhone: true },
+    { label: 'Email', value: student.Email || '-', field: 'email', type: 'email' },
+    { label: 'Address', value: student.Address || '-', field: 'address' },
+    { label: 'DOB', value: student['Date of Birth'] || '-', field: 'dob', type: 'date' },
+    { label: 'Admission Date', value: student['Admission Date'] || '-', field: 'admissionDate', type: 'date' },
+    { label: 'Route No.', value: student['Route No.'] || '-' },
+    { label: 'Pickup Point', value: student['Pickup Point'] || '-' },
+    { label: 'Status', value: student.Status || 'Active', field: 'status' },
+  ];
+
+  return (
+    <div className="bg-card rounded-2xl p-4 neu-raised">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Student Details</h3>
+        {editing ? (
+          <div className="flex gap-2">
+            <button onClick={() => setEditing(false)} className="h-8 w-8 rounded-xl bg-card flex items-center justify-center neu-raised-sm"><X className="h-4 w-4 text-muted-foreground" /></button>
+            <button onClick={handleSave} disabled={isLoading} className="h-8 w-8 rounded-xl bg-primary flex items-center justify-center">
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin text-primary-foreground" /> : <Save className="h-4 w-4 text-primary-foreground" />}
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => setEditing(true)} className="h-8 w-8 rounded-xl bg-card flex items-center justify-center neu-raised-sm"><Edit2 className="h-4 w-4 text-muted-foreground" /></button>
+        )}
+      </div>
+      <div className="space-y-1 text-sm">
+        {details.map(d => (
+          <div key={d.label} className="flex justify-between py-2 border-b border-border/50 last:border-0">
+            <span className="text-muted-foreground">{d.label}</span>
+            {editing && d.field ? (
+              d.type === 'select' && d.field === 'class' ? (
+                <Select value={form.class} onValueChange={v => setForm(f => ({ ...f, class: v }))}>
+                  <SelectTrigger className="h-7 w-32 text-xs rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>{CLASS_LIST.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                </Select>
+              ) : (
+                <input
+                  type={d.type || 'text'}
+                  value={(form as any)[d.field] || ''}
+                  onChange={e => setForm(f => ({ ...f, [d.field!]: e.target.value }))}
+                  className="h-7 w-32 px-2 text-xs text-right rounded-xl border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              )
+            ) : (
+              d.isPhone && d.value && d.value !== '-' ? (
+                <a href={`tel:${d.value}`} className="font-semibold text-foreground text-right hover:text-primary hover:underline flex items-center gap-1 justify-end">
+                  <Phone className="h-3 w-3" />
+                  {d.value}
+                </a>
+              ) : (
+                <span className="font-semibold text-foreground text-right">{d.value}</span>
+              )
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CollectFeeForStudentDialog({ open, onClose, student, onAdd, isLoading }: {
+  open: boolean; onClose: () => void; student: StudentRow;
+  onAdd: (data: Record<string, any>) => void; isLoading: boolean;
+}) {
+  const [form, setForm] = useState({
+    amount: '', mode: 'Cash', remarks: '',
+    date: new Date().toISOString().split('T')[0],
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.amount) return;
+    onAdd({
+      Date: form.date,
+      'Roll No.': student['Roll No.'],
+      Amount: Number(form.amount),
+      Mode: form.mode,
+      Remarks: form.remarks,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-sm mx-auto rounded-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-extrabold">
+            Collect Fee — {student['Student Name']}
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <Label className="text-xs font-semibold">Amount (₹) *</Label>
+            <Input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required min={1} className="rounded-xl" />
+          </div>
+          <div>
+            <Label className="text-xs font-semibold">Date</Label>
+            <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="rounded-xl" />
+          </div>
+          <div>
+            <Label className="text-xs font-semibold">Mode</Label>
+            <Select value={form.mode} onValueChange={v => setForm(f => ({ ...f, mode: v }))}>
+              <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+              <SelectContent>{PAYMENT_MODES.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs font-semibold">Remarks</Label>
+            <Input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} className="rounded-xl" />
+          </div>
+          <Button type="submit" className="w-full rounded-xl h-11 font-bold" disabled={isLoading}>
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Record Payment
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
