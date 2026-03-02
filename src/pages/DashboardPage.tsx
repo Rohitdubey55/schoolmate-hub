@@ -398,15 +398,23 @@ export default function DashboardPage() {
                 
                 const caption = `Fee Receipt - ${selectedTxn.txn['Receipt No.']} - ${selectedTxn.student['Student Name']} - ${formatCurrency(Number(selectedTxn.txn.Amount))}`;
                 
-                // Use native share or WhatsApp
-                try {
-                  const { sendNativeAction } = await import('@/lib/native-bridge');
-                  sendNativeAction({
-                    action: 'whatsapp',
-                    phone: `91${cleaned}`,
-                    text: caption
-                  });
-                } catch {
+                // Convert data URL to blob for sharing
+                const response = await fetch(imageDataUrl);
+                const blob = await response.blob();
+                
+                // Use native share API to share image
+                if (navigator.share) {
+                  try {
+                    await navigator.share({
+                      title: 'Fee Receipt',
+                      text: caption,
+                      files: [new File([blob], 'receipt.png', { type: 'image/png' })]
+                    });
+                  } catch (e) {
+                    // User cancelled or error - do nothing
+                  }
+                } else {
+                  // Fallback to WhatsApp web
                   window.open(`https://wa.me/91${cleaned}?text=${encodeURIComponent(caption)}`, '_blank');
                 }
                 setShowTxnActions(false);

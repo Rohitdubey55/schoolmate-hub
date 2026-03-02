@@ -13,7 +13,8 @@
 
 export type BridgeAction =
     | { action: 'whatsapp'; phone: string; text: string }
-    | { action: 'dial'; phone: string };
+    | { action: 'dial'; phone: string }
+    | { action: 'share'; title: string; text?: string; file?: Blob };
 
 /**
  * Send an action to the App Inventor native layer.
@@ -48,7 +49,20 @@ export function sendNativeAction(payload: BridgeAction): boolean {
         }
     }
 
-    // 3. Last resort — direct URL navigation (works on desktop browsers)
+    // 3. Web Share API (for sharing images/files)
+    if (payload.action === 'share' && navigator.share) {
+        const shareData: any = { title: payload.title };
+        if (payload.text) shareData.text = payload.text;
+        
+        if (payload.file) {
+            shareData.files = [new File([payload.file], 'receipt.png', { type: 'image/png' })];
+        }
+        
+        navigator.share(shareData).then(() => true).catch(() => false);
+        return true;
+    }
+
+    // 4. Last resort — direct URL navigation (works on desktop browsers)
     if (payload.action === 'dial') {
         window.location.href = `tel:${payload.phone}`;
     } else if (payload.action === 'whatsapp') {
