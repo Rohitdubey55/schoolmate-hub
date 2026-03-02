@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { buildFeeReminderMessage } from '@/lib/whatsapp';
+import { buildFeeReminderMessage, buildFinancialStatusMessage, buildLastReceiptMessage } from '@/lib/whatsapp';
 import { printContent } from '@/lib/print';
 import { sendNativeAction } from '@/lib/native-bridge';
 import type { BalanceRow, TransactionRow, StudentRow } from '@/lib/api';
@@ -128,6 +128,54 @@ export default function StudentProfilePage() {
     sendNativeAction({ action: 'whatsapp', phone: `91${cleaned}`, text: msg });
   };
 
+  const handleWhatsAppStatus = () => {
+    if (!phone) { toast({ title: 'No mobile number available' }); return; }
+    const cleaned = phone.replace(/\D/g, '').slice(-10);
+    if (cleaned.length !== 10) { toast({ title: 'Invalid phone number' }); return; }
+    if (!balance) { toast({ title: 'No balance data available' }); return; }
+    const msg = buildFinancialStatusMessage(
+      schoolName,
+      student['Student Name'],
+      student['Father Name'],
+      student.Class,
+      student['Roll No.'],
+      Number(balance['Balance\nUpto\nDec 2025']) || 0,
+      Number(balance['Fee\nDec. to\nMarch']) || 0,
+      Number(balance['Van\nFee Upto\nMarch']) || 0,
+      Number(balance['Ot\nExam-200\nR-Card-200']) || 0,
+      Number(balance.Total) || 0,
+      Number(balance['Rec.']) || 0,
+      outstanding,
+      academicYear
+    );
+    sendNativeAction({ action: 'whatsapp', phone: `91${cleaned}`, text: msg });
+  };
+
+  const handleWhatsAppReceipt = () => {
+    if (!phone) { toast({ title: 'No mobile number available' }); return; }
+    const cleaned = phone.replace(/\D/g, '').slice(-10);
+    if (cleaned.length !== 10) { toast({ title: 'Invalid phone number' }); return; }
+    const last = studentTxns[0];
+    if (!last) { toast({ title: 'No transactions found' }); return; }
+    const msg = buildLastReceiptMessage(
+      schoolName,
+      student['Student Name'],
+      student['Father Name'],
+      student.Class,
+      student['Roll No.'],
+      last['Receipt No.'],
+      last.Date,
+      Number(balance?.Total) || 0,
+      Number(balance?.['Rec.']) || 0,
+      Number(last.Amount),
+      last.Mode,
+      outstanding,
+      academicYear,
+      last.Remarks
+    );
+    sendNativeAction({ action: 'whatsapp', phone: `91${cleaned}`, text: msg });
+  };
+
   return (
     <div className="animate-float-in">
       {/* Header */}
@@ -149,11 +197,13 @@ export default function StudentProfilePage() {
 
       <div className="p-4 space-y-4">
         {/* Quick Actions */}
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-6 gap-2">
           <ActionButton icon={<Printer className="h-4 w-4" />} label="Print Status" onClick={handlePrintFinancial} />
           <ActionButton icon={<IndianRupee className="h-4 w-4" />} label="Collect Fee" onClick={() => setShowCollect(true)} color="success" />
           <ActionButton icon={<Printer className="h-4 w-4" />} label="Last Receipt" onClick={handlePrintLastTxn} />
           <ActionButton icon={<MessageCircle className="h-4 w-4" />} label="WhatsApp" onClick={handleWhatsApp} color="success" />
+          <ActionButton icon={<MessageCircle className="h-4 w-4" />} label="WA Status" onClick={handleWhatsAppStatus} />
+          <ActionButton icon={<MessageCircle className="h-4 w-4" />} label="WA Receipt" onClick={handleWhatsAppReceipt} />
         </div>
 
         {/* Financial Summary */}
