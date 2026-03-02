@@ -236,7 +236,6 @@ export default function StudentProfilePage() {
         receiptHtml,
         shareTitle: `Fee Receipt — ${student['Student Name']}`,
         fallbackText: fallbackMsg,
-        phone: `91${cleaned}`,
       });
 
       if (result === 'image') {

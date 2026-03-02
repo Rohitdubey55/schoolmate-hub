@@ -7,8 +7,8 @@
  * On Android WebView / Chrome, the system share sheet opens and the
  * user can pick WhatsApp (or any other app) to send the image.
  *
- * Falls back to: opening WhatsApp with a text message if the device
- * does not support file sharing via navigator.share.
+ * Falls back to: text via navigator.share, or returning 'failed' so the
+ * caller can use the AppInventor bridge (setWebViewString) on MIT WebView.
  */
 
 import html2canvas from 'html2canvas';
@@ -20,8 +20,6 @@ export interface ReceiptShareOptions {
     shareTitle: string;
     /** Fallback text message if image sharing is not supported */
     fallbackText: string;
-    /** WhatsApp target phone, e.g. "919876543210" */
-    phone: string;
 }
 
 /**
@@ -105,10 +103,9 @@ export async function shareReceiptAsImage(opts: ReceiptShareOptions): Promise<'i
             return 'text';
         }
 
-        // --- 6. Last resort: open WhatsApp via wa.me with text ---
-        const encoded = encodeURIComponent(opts.fallbackText);
-        window.location.href = `https://wa.me/${opts.phone}?text=${encoded}`;
-        return 'text';
+        // --- 6. No sharing API available (MIT App Inventor WebView, etc.) ---
+        // Return 'failed' — the caller will use AppInventor.setWebViewString bridge.
+        return 'failed';
 
     } catch (err: any) {
         if (document.body.contains(container)) {
