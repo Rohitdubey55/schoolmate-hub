@@ -420,24 +420,32 @@ export default function DashboardPage() {
                 
                 const caption = `Fee Receipt - ${selectedTxn.txn['Receipt No.']} - ${selectedTxn.student['Student Name']} - ${formatCurrency(Number(selectedTxn.txn.Amount))}`;
                 
-                // Convert data URL to blob for sharing
-                const response = await fetch(imageDataUrl);
-                const blob = await response.blob();
-                
-                // Use native share API to share image
-                if (navigator.share) {
-                  try {
-                    await navigator.share({
-                      title: 'Fee Receipt',
-                      text: caption,
-                      files: [new File([blob], 'receipt.png', { type: 'image/png' })]
-                    });
-                  } catch (e) {
-                    // User cancelled or error - do nothing
+                // For MIT App Inventor, use native bridge to share via WhatsApp
+                // First try native share API, then fallback to native bridge
+                const tryShare = async (): Promise<boolean> => {
+                  // Try Web Share API first (works on some Android WebViews)
+                  if (navigator.share) {
+                    try {
+                      const response = await fetch(imageDataUrl);
+                      const blob = await response.blob();
+                      const file = new File([blob], 'receipt.png', { type: 'image/png' });
+                      if (navigator.canShare?.({ files: [file] })) {
+                        await navigator.share({ title: 'Fee Receipt', text: caption, files: [file] });
+                        return true;
+                      }
+                    } catch { /* ignore */ }
                   }
-                } else {
-                  // Fallback to WhatsApp web
-                  window.open(`https://wa.me/91${cleaned}?text=${encodeURIComponent(caption)}`, '_blank');
+                  return false;
+                };
+                
+                const shared = await tryShare();
+                if (!shared) {
+                  // Use native bridge - send message to App Inventor to handle WhatsApp
+                  sendNativeAction({
+                    action: 'whatsapp',
+                    phone: `91${cleaned}`,
+                    text: caption
+                  });
                 }
                 setShowTxnActions(false);
               }}
