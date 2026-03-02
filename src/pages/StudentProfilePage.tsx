@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { buildFeeReminderMessage, buildFinancialStatusMessage, buildLastReceiptMessage } from '@/lib/whatsapp';
 import { printContent } from '@/lib/print';
 import { sendNativeAction } from '@/lib/native-bridge';
+import { shareReceiptAsImage } from '@/lib/share-receipt';
 import type { BalanceRow, TransactionRow, StudentRow } from '@/lib/api';
 
 export default function StudentProfilePage() {
@@ -31,6 +32,7 @@ export default function StudentProfilePage() {
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionRow | null>(null);
   const [showTransactionDialog, setShowTransactionDialog] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [isSharingReceipt, setIsSharingReceipt] = useState(false);
   const { toast } = useToast();
 
   // Handle both numeric roll numbers (9014) and string roll numbers (UKG011)
@@ -180,32 +182,39 @@ export default function StudentProfilePage() {
     if (!phone) return;
     const cleaned = phone.replace(/\D/g, '').slice(-10);
     if (cleaned.length !== 10) return;
-    
-    // Generate PDF receipt and get base64
+    if (isSharingReceipt) return; // prevent double-tap
+
+    setIsSharingReceipt(true);
+    toast({ title: '⏳ Generating receipt image…' });
+
     const balanceDue = Number(balance?.Balance) || 0;
-    const html = `
-      <h1>${schoolName}</h1>
-      <div class="subtitle">Fee Receipt — ${academicYear}</div>
-      <div class="divider"></div>
-      <div class="row"><span class="label">Receipt No.</span><span class="value">${txn['Receipt No.']}</span></div>
-      <div class="row"><span class="label">Date</span><span class="value">${txn.Date}</span></div>
-      <div class="divider"></div>
-      <div class="row"><span class="label">Student</span><span class="value">${student['Student Name']}</span></div>
-      <div class="row"><span class="label">Father</span><span class="value">${student['Father Name']}</span></div>
-      <div class="row"><span class="label">Class</span><span class="value">${student.Class}</span></div>
-      <div class="row"><span class="label">Roll No.</span><span class="value">${student['Roll No.']}</span></div>
-      <div class="divider"></div>
-      <div class="row"><span class="label">Total Fees</span><span class="value">${formatCurrency(Number(balance?.Total) || 0)}</span></div>
-      <div class="row"><span class="label">Total Received</span><span class="value" style="color:green">${formatCurrency(Number(balance?.['Rec.']) || 0)}</span></div>
-      <div class="row total-row"><span class="label">Amount Paid</span><span class="value" style="color:green">${formatCurrency(Number(txn.Amount))}</span></div>
-      <div class="row"><span class="label">Mode</span><span class="value">${txn.Mode}</span></div>
-      ${txn.Remarks ? `<div class="row"><span class="label">Remarks</span><span class="value">${txn.Remarks}</span></div>` : ''}
-      <div class="divider"></div>
-      <div class="row total-row"><span class="label">Balance Due</span><span class="value" style="color:${balanceDue > 0 ? 'red' : 'green'}">${formatCurrency(balanceDue)}</span></div>
+
+    // ── Styled receipt HTML consumed by share-receipt.ts (uses .r-* classes) ──
+    const receiptHtml = `
+      <div class="r-school">${schoolName}</div>
+      <div class="r-subtitle">Fee Receipt — ${academicYear}</div>
+      <hr class="r-divider" />
+      <div class="r-row"><span class="r-label">Receipt No.</span><span class="r-value">${txn['Receipt No.']}</span></div>
+      <div class="r-row"><span class="r-label">Date</span><span class="r-value">${txn.Date}</span></div>
+      <hr class="r-divider" />
+      <div class="r-row"><span class="r-label">Student</span><span class="r-value">${student['Student Name']}</span></div>
+      <div class="r-row"><span class="r-label">Father's Name</span><span class="r-value">${student['Father Name']}</span></div>
+      <div class="r-row"><span class="r-label">Class</span><span class="r-value">${student.Class}</span></div>
+      <div class="r-row"><span class="r-label">Roll No.</span><span class="r-value">${student['Roll No.']}</span></div>
+      <hr class="r-divider" />
+      <div class="r-row"><span class="r-label">Total Fees</span><span class="r-value">${formatCurrency(Number(balance?.Total) || 0)}</span></div>
+      <div class="r-row"><span class="r-label">Total Received</span><span class="r-value r-green">${formatCurrency(Number(balance?.['Rec.']) || 0)}</span></div>
+      <div class="r-row r-total"><span class="r-label">Amount Paid</span><span class="r-value r-green">${formatCurrency(Number(txn.Amount))}</span></div>
+      <div class="r-row"><span class="r-label">Payment Mode</span><span class="r-value">${txn.Mode}</span></div>
+      ${txn.Remarks ? `<div class="r-row"><span class="r-label">Remarks</span><span class="r-value">${txn.Remarks}</span></div>` : ''}
+      <hr class="r-divider" />
+      <div class="r-row r-total"><span class="r-label">Balance Due</span><span class="r-value ${balanceDue > 0 ? 'r-red' : 'r-green'}">${formatCurrency(balanceDue)}</span></div>
+      <div style="text-align:center;margin-top:14px">
+        <span class="r-stamp">${balanceDue <= 0 ? '✓ PAID' : 'PARTIAL PAYMENT'}</span>
+      </div>
     `;
-    
-    // Try to use native share or fall back to text
-    const msg = buildLastReceiptMessage(
+
+    const fallbackMsg = buildLastReceiptMessage(
       schoolName,
       student['Student Name'],
       student['Father Name'],
@@ -221,10 +230,27 @@ export default function StudentProfilePage() {
       academicYear,
       txn.Remarks
     );
-    
-    // Send via native action - for now text, but we include receipt details
-    sendNativeAction({ action: 'whatsapp', phone: `91${cleaned}`, text: msg });
-    toast({ title: 'Receipt sent on WhatsApp' });
+
+    try {
+      const result = await shareReceiptAsImage({
+        receiptHtml,
+        shareTitle: `Fee Receipt — ${student['Student Name']}`,
+        fallbackText: fallbackMsg,
+        phone: `91${cleaned}`,
+      });
+
+      if (result === 'image') {
+        toast({ title: '✅ Receipt image shared!' });
+      } else if (result === 'text') {
+        toast({ title: '📤 Receipt text sent on WhatsApp' });
+      } else {
+        // Final fallback: plain whatsapp text
+        sendNativeAction({ action: 'whatsapp', phone: `91${cleaned}`, text: fallbackMsg });
+        toast({ title: '📤 Opening WhatsApp with receipt' });
+      }
+    } finally {
+      setIsSharingReceipt(false);
+    }
   };
 
   return (
@@ -295,7 +321,7 @@ export default function StudentProfilePage() {
 
         {/* Transaction History */}
         <div className="space-y-2">
-          <h3 
+          <h3
             className="text-xs font-bold uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-primary"
             onClick={() => setShowAllTransactions(!showAllTransactions)}
           >
@@ -307,8 +333,8 @@ export default function StudentProfilePage() {
             </div>
           )}
           {(showAllTransactions ? studentTxns : studentTxns.slice(0, 3)).map((txn, i) => (
-            <div 
-              key={i} 
+            <div
+              key={i}
               className="bg-card rounded-2xl p-4 neu-raised-sm flex items-center justify-between animate-float-in cursor-pointer hover:bg-primary/5"
               style={{ animationDelay: `${i * 50}ms` }}
               onClick={() => {
@@ -330,7 +356,7 @@ export default function StudentProfilePage() {
             </div>
           ))}
           {studentTxns.length > 3 && !showAllTransactions && (
-            <button 
+            <button
               className="w-full text-center text-xs text-primary font-semibold py-2"
               onClick={() => setShowAllTransactions(true)}
             >
@@ -411,13 +437,14 @@ export default function StudentProfilePage() {
             <Button
               variant="outline"
               className="w-full rounded-xl h-12 font-semibold justify-start"
+              disabled={isSharingReceipt}
               onClick={() => {
                 setShowTransactionDialog(false);
                 if (selectedTransaction) handleWhatsAppReceiptSpecific(selectedTransaction);
               }}
             >
               <MessageCircle className="h-4 w-4 mr-2" />
-              Share on WhatsApp
+              {isSharingReceipt ? 'Generating…' : 'Share on WhatsApp'}
             </Button>
             <Button
               variant="outline"
