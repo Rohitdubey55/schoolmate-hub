@@ -27,6 +27,9 @@ export default function StudentProfilePage() {
   const updateBalanceMutation = useUpdateBalance();
   const [showCollect, setShowCollect] = useState(false);
   const [showWhatsAppMenu, setShowWhatsAppMenu] = useState(false);
+  const [showAllTransactions, setShowAllTransactions] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<TransactionRow | null>(null);
+  const [showTransactionDialog, setShowTransactionDialog] = useState(false);
   const [editing, setEditing] = useState(false);
   const { toast } = useToast();
 
@@ -96,13 +99,18 @@ export default function StudentProfilePage() {
   const handlePrintLastTxn = () => {
     const last = studentTxns[0];
     if (!last) { toast({ title: 'No transactions found' }); return; }
-    const balanceDue = Number(balance?.Balance) || 0;
+    printReceipt(last);
+  };
+
+  const printReceipt = (txn: TransactionRow) => {
+    if (!balance) return;
+    const balanceDue = Number(balance.Balance) || 0;
     const html = `
       <h1>${schoolName}</h1>
       <div class="subtitle">Fee Receipt — ${academicYear}</div>
       <div class="divider"></div>
-      <div class="row"><span class="label">Receipt No.</span><span class="value">${last['Receipt No.']}</span></div>
-      <div class="row"><span class="label">Date</span><span class="value">${last.Date}</span></div>
+      <div class="row"><span class="label">Receipt No.</span><span class="value">${txn['Receipt No.']}</span></div>
+      <div class="row"><span class="label">Date</span><span class="value">${txn.Date}</span></div>
       <div class="divider"></div>
       <div class="row"><span class="label">Student</span><span class="value">${student['Student Name']}</span></div>
       <div class="row"><span class="label">Father</span><span class="value">${student['Father Name']}</span></div>
@@ -111,13 +119,13 @@ export default function StudentProfilePage() {
       <div class="divider"></div>
       <div class="row"><span class="label">Total Fees</span><span class="value">${formatCurrency(Number(balance?.Total) || 0)}</span></div>
       <div class="row"><span class="label">Total Received</span><span class="value" style="color:green">${formatCurrency(Number(balance?.['Rec.']) || 0)}</span></div>
-      <div class="row total-row"><span class="label">Amount Paid</span><span class="value" style="color:green">${formatCurrency(Number(last.Amount))}</span></div>
-      <div class="row"><span class="label">Mode</span><span class="value">${last.Mode}</span></div>
-      ${last.Remarks ? `<div class="row"><span class="label">Remarks</span><span class="value">${last.Remarks}</span></div>` : ''}
+      <div class="row total-row"><span class="label">Amount Paid</span><span class="value" style="color:green">${formatCurrency(Number(txn.Amount))}</span></div>
+      <div class="row"><span class="label">Mode</span><span class="value">${txn.Mode}</span></div>
+      ${txn.Remarks ? `<div class="row"><span class="label">Remarks</span><span class="value">${txn.Remarks}</span></div>` : ''}
       <div class="divider"></div>
       <div class="row total-row"><span class="label">Balance Due</span><span class="value" style="color:${balanceDue > 0 ? 'red' : 'green'}">${formatCurrency(balanceDue)}</span></div>
     `;
-    printContent(`Receipt - ${last['Receipt No.']}`, html);
+    printContent(`Receipt - ${txn['Receipt No.']}`, html);
   };
 
   const handleWhatsApp = () => {
@@ -158,23 +166,65 @@ export default function StudentProfilePage() {
     if (cleaned.length !== 10) { toast({ title: 'Invalid phone number' }); return; }
     const last = studentTxns[0];
     if (!last) { toast({ title: 'No transactions found' }); return; }
+    sendWhatsAppReceipt(last);
+  };
+
+  const handleWhatsAppReceiptSpecific = (txn: TransactionRow) => {
+    if (!phone) { toast({ title: 'No mobile number available' }); return; }
+    const cleaned = phone.replace(/\D/g, '').slice(-10);
+    if (cleaned.length !== 10) { toast({ title: 'Invalid phone number' }); return; }
+    sendWhatsAppReceipt(txn);
+  };
+
+  const sendWhatsAppReceipt = async (txn: TransactionRow) => {
+    if (!phone) return;
+    const cleaned = phone.replace(/\D/g, '').slice(-10);
+    if (cleaned.length !== 10) return;
+    
+    // Generate PDF receipt and get base64
+    const balanceDue = Number(balance?.Balance) || 0;
+    const html = `
+      <h1>${schoolName}</h1>
+      <div class="subtitle">Fee Receipt — ${academicYear}</div>
+      <div class="divider"></div>
+      <div class="row"><span class="label">Receipt No.</span><span class="value">${txn['Receipt No.']}</span></div>
+      <div class="row"><span class="label">Date</span><span class="value">${txn.Date}</span></div>
+      <div class="divider"></div>
+      <div class="row"><span class="label">Student</span><span class="value">${student['Student Name']}</span></div>
+      <div class="row"><span class="label">Father</span><span class="value">${student['Father Name']}</span></div>
+      <div class="row"><span class="label">Class</span><span class="value">${student.Class}</span></div>
+      <div class="row"><span class="label">Roll No.</span><span class="value">${student['Roll No.']}</span></div>
+      <div class="divider"></div>
+      <div class="row"><span class="label">Total Fees</span><span class="value">${formatCurrency(Number(balance?.Total) || 0)}</span></div>
+      <div class="row"><span class="label">Total Received</span><span class="value" style="color:green">${formatCurrency(Number(balance?.['Rec.']) || 0)}</span></div>
+      <div class="row total-row"><span class="label">Amount Paid</span><span class="value" style="color:green">${formatCurrency(Number(txn.Amount))}</span></div>
+      <div class="row"><span class="label">Mode</span><span class="value">${txn.Mode}</span></div>
+      ${txn.Remarks ? `<div class="row"><span class="label">Remarks</span><span class="value">${txn.Remarks}</span></div>` : ''}
+      <div class="divider"></div>
+      <div class="row total-row"><span class="label">Balance Due</span><span class="value" style="color:${balanceDue > 0 ? 'red' : 'green'}">${formatCurrency(balanceDue)}</span></div>
+    `;
+    
+    // Try to use native share or fall back to text
     const msg = buildLastReceiptMessage(
       schoolName,
       student['Student Name'],
       student['Father Name'],
       student.Class,
       student['Roll No.'],
-      last['Receipt No.'],
-      last.Date,
+      txn['Receipt No.'],
+      txn.Date,
       Number(balance?.Total) || 0,
       Number(balance?.['Rec.']) || 0,
-      Number(last.Amount),
-      last.Mode,
-      outstanding,
+      Number(txn.Amount),
+      txn.Mode,
+      balanceDue,
       academicYear,
-      last.Remarks
+      txn.Remarks
     );
+    
+    // Send via native action - for now text, but we include receipt details
     sendNativeAction({ action: 'whatsapp', phone: `91${cleaned}`, text: msg });
+    toast({ title: 'Receipt sent on WhatsApp' });
   };
 
   return (
@@ -245,14 +295,27 @@ export default function StudentProfilePage() {
 
         {/* Transaction History */}
         <div className="space-y-2">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Payment History ({studentTxns.length})</h3>
+          <h3 
+            className="text-xs font-bold uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-primary"
+            onClick={() => setShowAllTransactions(!showAllTransactions)}
+          >
+            Payment History ({studentTxns.length}) {showAllTransactions ? '▲' : '▼'}
+          </h3>
           {studentTxns.length === 0 && (
             <div className="bg-card rounded-2xl p-6 neu-raised-sm text-center">
               <p className="text-sm text-muted-foreground">No payments recorded</p>
             </div>
           )}
-          {studentTxns.map((txn, i) => (
-            <div key={i} className="bg-card rounded-2xl p-4 neu-raised-sm flex items-center justify-between animate-float-in" style={{ animationDelay: `${i * 50}ms` }}>
+          {(showAllTransactions ? studentTxns : studentTxns.slice(0, 3)).map((txn, i) => (
+            <div 
+              key={i} 
+              className="bg-card rounded-2xl p-4 neu-raised-sm flex items-center justify-between animate-float-in cursor-pointer hover:bg-primary/5"
+              style={{ animationDelay: `${i * 50}ms` }}
+              onClick={() => {
+                setSelectedTransaction(txn);
+                setShowTransactionDialog(true);
+              }}
+            >
               <div className="flex items-center gap-3">
                 <div className="h-9 w-9 rounded-xl bg-success/10 flex items-center justify-center">
                   <IndianRupee className="h-4 w-4 text-success" />
@@ -266,6 +329,14 @@ export default function StudentProfilePage() {
               <p className="text-sm font-bold text-success">{formatCurrency(Number(txn.Amount))}</p>
             </div>
           ))}
+          {studentTxns.length > 3 && !showAllTransactions && (
+            <button 
+              className="w-full text-center text-xs text-primary font-semibold py-2"
+              onClick={() => setShowAllTransactions(true)}
+            >
+              Show All ({studentTxns.length - 3} more)
+            </button>
+          )}
         </div>
       </div>
 
@@ -311,6 +382,54 @@ export default function StudentProfilePage() {
             >
               <MessageCircle className="h-4 w-4 mr-2" />
               Send Last Receipt
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transaction Options Dialog */}
+      <Dialog open={showTransactionDialog} onOpenChange={setShowTransactionDialog}>
+        <DialogContent className="max-w-sm mx-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-extrabold">Transaction Options</DialogTitle>
+            <DialogDescription className="text-xs">
+              Receipt: {selectedTransaction?.['Receipt No.']} | Amount: {selectedTransaction ? formatCurrency(Number(selectedTransaction.Amount)) : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Button
+              variant="outline"
+              className="w-full rounded-xl h-12 font-semibold justify-start"
+              onClick={() => {
+                setShowTransactionDialog(false);
+                if (selectedTransaction) printReceipt(selectedTransaction);
+              }}
+            >
+              <Printer className="h-4 w-4 mr-2" />
+              Print Receipt
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full rounded-xl h-12 font-semibold justify-start"
+              onClick={() => {
+                setShowTransactionDialog(false);
+                if (selectedTransaction) handleWhatsAppReceiptSpecific(selectedTransaction);
+              }}
+            >
+              <MessageCircle className="h-4 w-4 mr-2" />
+              Share on WhatsApp
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full rounded-xl h-12 font-semibold justify-start"
+              onClick={() => {
+                setShowTransactionDialog(false);
+                // Edit functionality - could open a dialog to edit this transaction
+                toast({ title: 'Edit feature coming soon' });
+              }}
+            >
+              <Edit2 className="h-4 w-4 mr-2" />
+              Edit Transaction
             </Button>
           </div>
         </DialogContent>
