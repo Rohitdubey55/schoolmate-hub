@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStudents, useBalances, useTransactions, useExpenses, useStaff, useConfig, useUpdateTransaction } from '@/hooks/useSheetData';
 import { formatCurrency } from '@/lib/format';
-import { Users, IndianRupee, TrendingDown, AlertTriangle, ArrowUpRight, Loader2, Wallet, UserCog, CalendarDays, MessageCircle, Printer, Edit2 } from 'lucide-react';
+import { Users, IndianRupee, TrendingDown, AlertTriangle, ArrowUpRight, Loader2, Wallet, UserCog, CalendarDays, MessageCircle, Printer, Edit2, ChevronDown, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -27,6 +27,17 @@ export default function DashboardPage() {
   const [showTxnActions, setShowTxnActions] = useState(false);
   const [showEditTxn, setShowEditTxn] = useState(false);
   const updateTxnMutation = useUpdateTransaction();
+
+  // Collapsible sections - default collapsed
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    feeByClass: false,
+    topOutstanding: false,
+    recentPayments: false,
+  });
+
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
 
   const isLoading = loadingStudents || loadingBalances || loadingTxns;
 
@@ -179,82 +190,91 @@ export default function DashboardPage() {
       {/* Class-wise Fee Summary */}
       {classSummary.length > 0 && (
         <section className="bg-card rounded-2xl p-4 neu-raised animate-float-in" style={{ animationDelay: '300ms' }}>
-          <div className="flex items-center justify-between mb-3">
+          <button onClick={() => toggleSection('feeByClass')} className="flex items-center justify-between w-full mb-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Fee by Class</h3>
-          </div>
-          <div className="space-y-2">
-            {classSummary.map((cs) => {
-              const pct = cs.total > 0 ? Math.min(100, (cs.collected / cs.total) * 100) : 0;
-              return (
-                <div key={cs.className} className="rounded-xl p-3 neu-raised-sm bg-card">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-semibold text-foreground">{cs.className}</span>
-                    <span className="text-[10px] text-muted-foreground">{cs.count} students</span>
+            {expandedSections.feeByClass ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          </button>
+          {expandedSections.feeByClass && (
+            <div className="space-y-2">
+              {classSummary.map((cs) => {
+                const pct = cs.total > 0 ? Math.min(100, (cs.collected / cs.total) * 100) : 0;
+                return (
+                  <div key={cs.className} className="rounded-xl p-3 neu-raised-sm bg-card">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-semibold text-foreground">{cs.className}</span>
+                      <span className="text-[10px] text-muted-foreground">{cs.count} students</span>
+                    </div>
+                    <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${pct}%`,
+                          background: pct > 75 ? 'hsl(var(--success))' : pct > 40 ? 'hsl(var(--accent))' : 'hsl(var(--destructive))',
+                        }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[10px] text-success font-medium">{formatCurrency(cs.collected)}</span>
+                      <span className="text-[10px] text-destructive font-medium">{formatCurrency(cs.pending)}</span>
+                    </div>
                   </div>
-                  <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${pct}%`,
-                        background: pct > 75 ? 'hsl(var(--success))' : pct > 40 ? 'hsl(var(--accent))' : 'hsl(var(--destructive))',
-                      }}
-                    />
-                  </div>
-                  <div className="flex justify-between mt-1">
-                    <span className="text-[10px] text-success font-medium">{formatCurrency(cs.collected)}</span>
-                    <span className="text-[10px] text-destructive font-medium">{formatCurrency(cs.pending)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       )}
 
       {/* Top Outstanding Dues */}
       <section className="animate-float-in" style={{ animationDelay: '400ms' }}>
-        <div className="flex items-center justify-between mb-3">
+        <button onClick={() => toggleSection('topOutstanding')} className="flex items-center justify-between w-full mb-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Top Outstanding</h3>
-          <button onClick={() => navigate('/fees')} className="text-xs text-primary font-semibold flex items-center gap-0.5">
-            View all <ArrowUpRight className="h-3 w-3" />
-          </button>
-        </div>
-        <div className="space-y-2">
-          {topDues.map((b, i) => (
-            <button
-              key={i}
-              onClick={() => navigate(`/students/${b['Roll No.']}`)}
-              className="w-full bg-card rounded-xl p-3 neu-raised-sm neu-hover text-left"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center">
-                    <span className="text-sm font-bold text-destructive">{(b['Student Name'] || '?').charAt(0)}</span>
+          {expandedSections.topOutstanding ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+        </button>
+        {expandedSections.topOutstanding && (
+          <div className="space-y-2">
+            {topDues.map((b, i) => (
+              <button
+                key={i}
+                onClick={() => navigate(`/students/${b['Roll No.']}`)}
+                className="w-full bg-card rounded-xl p-3 neu-raised-sm neu-hover text-left"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center">
+                      <span className="text-sm font-bold text-destructive">{(b['Student Name'] || '?').charAt(0)}</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{b['Student Name']}</p>
+                      <p className="text-[10px] text-muted-foreground">Roll #{b['Roll No.']} · {b.Class}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{b['Student Name']}</p>
-                    <p className="text-[10px] text-muted-foreground">Roll #{b['Roll No.']} · {b.Class}</p>
-                  </div>
+                  <p className="text-sm font-bold text-destructive">{formatCurrency(Number(b.Balance))}</p>
                 </div>
-                <p className="text-sm font-bold text-destructive">{formatCurrency(Number(b.Balance))}</p>
+              </button>
+            ))}
+            {topDues.length === 0 && (
+              <div className="bg-card rounded-xl p-6 neu-raised-sm text-center">
+                <p className="text-sm text-success font-medium">All fees collected! 🎉</p>
               </div>
-            </button>
-          ))}
-          {topDues.length === 0 && (
-            <div className="bg-card rounded-xl p-6 neu-raised-sm text-center">
-              <p className="text-sm text-success font-medium">All fees collected! 🎉</p>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Recent Payments */}
       {transactions.length > 0 && (
         <section className="animate-float-in" style={{ animationDelay: '500ms' }}>
-          <button onClick={() => setShowAllTxns(true)} className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1 hover:text-primary">
-            Recent Payments <ArrowUpRight className="h-3 w-3" />
+          <button onClick={() => toggleSection('recentPayments')} className="flex items-center justify-between w-full mb-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Recent Payments</h3>
+            {expandedSections.recentPayments ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
           </button>
-          <div className="space-y-2">
+          {expandedSections.recentPayments && (
+            <>
+              <button onClick={() => setShowAllTxns(true)} className="text-xs text-primary font-semibold flex items-center gap-1 mb-2">
+                View All <ArrowUpRight className="h-3 w-3" />
+              </button>
+              <div className="space-y-2">
             {transactions.slice(-5).reverse().map((txn, i) => {
               const student = students.find(s => s['Roll No.'] === txn['Roll No.']);
               const balance = balances.find(b => b['Roll No.'] === txn['Roll No.']);
@@ -282,6 +302,7 @@ export default function DashboardPage() {
               );
             })}
           </div>
+          </>)}
         </section>
       )}
 
