@@ -29,6 +29,14 @@ export interface ReceiptShareOptions {
  * Returns: 'image' | 'text' | 'failed'
  */
 export async function shareReceiptAsImage(opts: ReceiptShareOptions): Promise<'image' | 'text' | 'failed'> {
+    // --- 0. Early-exit if no Web Share API is available ---
+    // In MIT App Inventor WebView, navigator.share is undefined.
+    // Running html2canvas there causes ERR_URL_SCHEME (it tries to fetch fonts/CSS).
+    // Return 'failed' immediately so the caller can use the AppInventor bridge.
+    if (!navigator.share) {
+        return 'failed';
+    }
+
     // --- 1. Build an off-screen receipt element ---
     const container = document.createElement('div');
     container.style.cssText = `

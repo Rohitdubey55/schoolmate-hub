@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { buildFeeReminderMessage, buildFinancialStatusMessage, buildLastReceiptMessage } from '@/lib/whatsapp';
 import { printContent } from '@/lib/print';
 import { sendNativeAction } from '@/lib/native-bridge';
-import { shareReceiptAsImage } from '@/lib/share-receipt';
+import { renderHtmlToJpegBase64 } from '@/lib/render-to-image';
 import type { BalanceRow, TransactionRow, StudentRow } from '@/lib/api';
 
 export default function StudentProfilePage() {
@@ -33,6 +33,7 @@ export default function StudentProfilePage() {
   const [showTransactionDialog, setShowTransactionDialog] = useState(false);
   const [editing, setEditing] = useState(false);
   const [isSharingReceipt, setIsSharingReceipt] = useState(false);
+  const [isSharingStatus, setIsSharingStatus] = useState(false);
   const { toast } = useToast();
 
   // Handle both numeric roll numbers (9014) and string roll numbers (UKG011)
@@ -139,27 +140,70 @@ export default function StudentProfilePage() {
     sendNativeAction({ action: 'whatsapp', phone: `91${cleaned}`, text: msg });
   };
 
-  const handleWhatsAppStatus = () => {
+  const handleWhatsAppStatus = async () => {
     if (!phone) { toast({ title: 'No mobile number available' }); return; }
     const cleaned = phone.replace(/\D/g, '').slice(-10);
     if (cleaned.length !== 10) { toast({ title: 'Invalid phone number' }); return; }
     if (!balance) { toast({ title: 'No balance data available' }); return; }
-    const msg = buildFinancialStatusMessage(
-      schoolName,
-      student['Student Name'],
-      student['Father Name'],
-      student.Class,
-      student['Roll No.'],
-      Number(balance['Balance\nUpto\nDec 2025']) || 0,
-      Number(balance['Fee\nDec. to\nMarch']) || 0,
-      Number(balance['Van\nFee Upto\nMarch']) || 0,
-      Number(balance['Ot\nExam-200\nR-Card-200']) || 0,
-      Number(balance.Total) || 0,
-      Number(balance['Rec.']) || 0,
-      outstanding,
-      academicYear
-    );
-    sendNativeAction({ action: 'whatsapp', phone: `91${cleaned}`, text: msg });
+    if (isSharingStatus) return;
+
+    setIsSharingStatus(true);
+    toast({ title: '⏳ Generating status image…' });
+
+    const prevBal = Number(balance['Balance\nUpto\nDec 2025']) || 0;
+    const tuition = Number(balance['Fee\nDec. to\nMarch']) || 0;
+    const vanFee = Number(balance['Van\nFee Upto\nMarch']) || 0;
+    const other = Number(balance['Ot\nExam-200\nR-Card-200']) || 0;
+    const total = Number(balance.Total) || 0;
+    const received = Number(balance['Rec.']) || 0;
+
+    const statusHtml = `
+      <div class="r-school">${schoolName}</div>
+      <div class="r-subtitle">Financial Status — ${academicYear}</div>
+      <hr class="r-divider" />
+      <div class="r-row"><span class="r-label">Student</span><span class="r-value">${student['Student Name']}</span></div>
+      <div class="r-row"><span class="r-label">Father's Name</span><span class="r-value">${student['Father Name']}</span></div>
+      <div class="r-row"><span class="r-label">Class</span><span class="r-value">${student.Class}</span></div>
+      <div class="r-row"><span class="r-label">Roll No.</span><span class="r-value">${student['Roll No.']}</span></div>
+      <hr class="r-divider" />
+      <div class="r-row"><span class="r-label">Previous Balance</span><span class="r-value">${formatCurrency(prevBal)}</span></div>
+      <div class="r-row"><span class="r-label">Tuition Fee</span><span class="r-value">${formatCurrency(tuition)}</span></div>
+      <div class="r-row"><span class="r-label">Van Fee</span><span class="r-value">${formatCurrency(vanFee)}</span></div>
+      <div class="r-row"><span class="r-label">Exam / Other</span><span class="r-value">${formatCurrency(other)}</span></div>
+      <hr class="r-divider" />
+      <div class="r-row r-total"><span class="r-label">Total Fees</span><span class="r-value">${formatCurrency(total)}</span></div>
+      <div class="r-row"><span class="r-label">Amount Received</span><span class="r-value r-green">${formatCurrency(received)}</span></div>
+      <div class="r-row r-total"><span class="r-label">Balance Due</span><span class="r-value ${outstanding > 0 ? 'r-red' : 'r-green'}">${formatCurrency(outstanding)}</span></div>
+      <div style="text-align:center;margin-top:14px">
+        <span class="r-stamp">${outstanding <= 0 ? '✓ CLEARED' : 'DUES PENDING'}</span>
+      </div>
+    `;
+
+    try {
+      const base64 = await renderHtmlToJpegBase64(statusHtml);
+      if (base64) {
+        const sent = sendNativeAction({
+          action: 'shareImage',
+          base64,
+          mimeType: 'image/jpeg',
+          fileName: 'financial-status.jpg',
+          title: `Financial Status — ${student['Student Name']}`,
+        });
+        if (sent) {
+          toast({ title: '✅ Status image sent!' });
+          return;
+        }
+      }
+      // Fallback: send as text
+      const msg = buildFinancialStatusMessage(
+        schoolName, student['Student Name'], student['Father Name'], student.Class,
+        student['Roll No.'], prevBal, tuition, vanFee, other, total, received, outstanding, academicYear
+      );
+      sendNativeAction({ action: 'whatsapp', phone: `91${cleaned}`, text: msg });
+      toast({ title: '📤 Status sent as text to WhatsApp' });
+    } finally {
+      setIsSharingStatus(false);
+    }
   };
 
   const handleWhatsAppReceipt = () => {
@@ -182,14 +226,13 @@ export default function StudentProfilePage() {
     if (!phone) return;
     const cleaned = phone.replace(/\D/g, '').slice(-10);
     if (cleaned.length !== 10) return;
-    if (isSharingReceipt) return; // prevent double-tap
+    if (isSharingReceipt) return;
 
     setIsSharingReceipt(true);
     toast({ title: '⏳ Generating receipt image…' });
 
     const balanceDue = Number(balance?.Balance) || 0;
 
-    // ── Styled receipt HTML consumed by share-receipt.ts (uses .r-* classes) ──
     const receiptHtml = `
       <div class="r-school">${schoolName}</div>
       <div class="r-subtitle">Fee Receipt — ${academicYear}</div>
@@ -215,38 +258,30 @@ export default function StudentProfilePage() {
     `;
 
     const fallbackMsg = buildLastReceiptMessage(
-      schoolName,
-      student['Student Name'],
-      student['Father Name'],
-      student.Class,
-      student['Roll No.'],
-      txn['Receipt No.'],
-      txn.Date,
-      Number(balance?.Total) || 0,
-      Number(balance?.['Rec.']) || 0,
-      Number(txn.Amount),
-      txn.Mode,
-      balanceDue,
-      academicYear,
-      txn.Remarks
+      schoolName, student['Student Name'], student['Father Name'], student.Class,
+      student['Roll No.'], txn['Receipt No.'], txn.Date,
+      Number(balance?.Total) || 0, Number(balance?.['Rec.']) || 0,
+      Number(txn.Amount), txn.Mode, balanceDue, academicYear, txn.Remarks
     );
 
     try {
-      const result = await shareReceiptAsImage({
-        receiptHtml,
-        shareTitle: `Fee Receipt — ${student['Student Name']}`,
-        fallbackText: fallbackMsg,
-      });
-
-      if (result === 'image') {
-        toast({ title: '✅ Receipt image shared!' });
-      } else if (result === 'text') {
-        toast({ title: '📤 Receipt text sent on WhatsApp' });
-      } else {
-        // Final fallback: plain whatsapp text
-        sendNativeAction({ action: 'whatsapp', phone: `91${cleaned}`, text: fallbackMsg });
-        toast({ title: '📤 Opening WhatsApp with receipt' });
+      const base64 = await renderHtmlToJpegBase64(receiptHtml);
+      if (base64) {
+        const sent = sendNativeAction({
+          action: 'shareImage',
+          base64,
+          mimeType: 'image/jpeg',
+          fileName: 'receipt.jpg',
+          title: `Fee Receipt — ${student['Student Name']}`,
+        });
+        if (sent) {
+          toast({ title: '✅ Receipt image sent!' });
+          return;
+        }
       }
+      // Fallback: send as WhatsApp text
+      sendNativeAction({ action: 'whatsapp', phone: `91${cleaned}`, text: fallbackMsg });
+      toast({ title: '📤 Receipt sent as text to WhatsApp' });
     } finally {
       setIsSharingReceipt(false);
     }
@@ -378,13 +413,14 @@ export default function StudentProfilePage() {
             <Button
               variant="outline"
               className="w-full rounded-xl h-12 font-semibold justify-start"
+              disabled={isSharingStatus}
               onClick={() => {
                 setShowWhatsAppMenu(false);
                 handleWhatsAppStatus();
               }}
             >
               <MessageCircle className="h-4 w-4 mr-2" />
-              Send Current Status
+              {isSharingStatus ? 'Generating…' : 'Send Current Status'}
             </Button>
             <Button
               variant="outline"
