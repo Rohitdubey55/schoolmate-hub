@@ -6,6 +6,9 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { printContent } from '@/lib/print';
 import { sendNativeAction } from '@/lib/native-bridge';
 import { buildLastReceiptMessage } from '@/lib/whatsapp';
@@ -22,6 +25,7 @@ export default function DashboardPage() {
   const [showAllTxns, setShowAllTxns] = useState(false);
   const [selectedTxn, setSelectedTxn] = useState<any>(null);
   const [showTxnActions, setShowTxnActions] = useState(false);
+  const [showEditTxn, setShowEditTxn] = useState(false);
 
   const isLoading = loadingStudents || loadingBalances || loadingTxns;
 
@@ -414,15 +418,32 @@ export default function DashboardPage() {
               variant="outline"
               className="w-full rounded-xl h-12 font-semibold justify-start"
               onClick={() => {
-                if (selectedTxn?.student) {
-                  navigate(`/students/${selectedTxn.student['Roll No.']}`);
-                  setShowTxnActions(false);
-                }
+                setShowTxnActions(false);
+                setShowEditTxn(true);
               }}
             >
-              <Edit2 className="h-4 w-4 mr-2" /> Edit Student
+              <Edit2 className="h-4 w-4 mr-2" /> Edit Transaction
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Transaction Dialog */}
+      <Dialog open={showEditTxn} onOpenChange={setShowEditTxn}>
+        <DialogContent className="max-w-sm mx-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-extrabold">Edit Transaction</DialogTitle>
+          </DialogHeader>
+          <EditTransactionForm
+            transaction={selectedTxn?.txn}
+            balance={selectedTxn?.balance}
+            onSave={async (data) => {
+              // Handle save - would need to integrate with API
+              console.log('Save transaction:', data);
+              setShowEditTxn(false);
+            }}
+            onCancel={() => setShowEditTxn(false)}
+          />
         </DialogContent>
       </Dialog>
     </div>
@@ -504,4 +525,71 @@ function getClassSummary(balances: any[]) {
   return Object.entries(map)
     .map(([className, data]) => ({ className, ...data }))
     .sort((a, b) => b.pending - a.pending);
+}
+
+function EditTransactionForm({ transaction, balance, onSave, onCancel }: {
+  transaction?: any; balance?: any;
+  onSave: (data: any) => void; onCancel: () => void;
+}) {
+  const [form, setForm] = useState({
+    amount: transaction?.Amount ? String(transaction.Amount) : '',
+    mode: transaction?.Mode || 'Cash',
+    date: transaction?.Date || new Date().toISOString().split('T')[0],
+    remarks: transaction?.Remarks || '',
+  });
+
+  if (!transaction) return null;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <Label className="text-xs font-semibold">Amount (₹)</Label>
+        <Input
+          type="number"
+          value={form.amount}
+          onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+          className="rounded-xl"
+        />
+      </div>
+      <div>
+        <Label className="text-xs font-semibold">Date</Label>
+        <Input
+          type="date"
+          value={form.date}
+          onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+          className="rounded-xl"
+        />
+      </div>
+      <div>
+        <Label className="text-xs font-semibold">Mode</Label>
+        <Select value={form.mode} onValueChange={v => setForm(f => ({ ...f, mode: v }))}>
+          <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Cash">Cash</SelectItem>
+            <SelectItem value="Online">Online</SelectItem>
+            <SelectItem value="UPI">UPI</SelectItem>
+            <SelectItem value="Cheque">Cheque</SelectItem>
+            <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label className="text-xs font-semibold">Remarks</Label>
+        <Input
+          value={form.remarks}
+          onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))}
+          className="rounded-xl"
+          placeholder="Optional remarks"
+        />
+      </div>
+      <div className="flex gap-2 pt-2">
+        <Button variant="outline" onClick={onCancel} className="flex-1 rounded-xl">
+          Cancel
+        </Button>
+        <Button onClick={() => onSave(form)} className="flex-1 rounded-xl">
+          Save
+        </Button>
+      </div>
+    </div>
+  );
 }
