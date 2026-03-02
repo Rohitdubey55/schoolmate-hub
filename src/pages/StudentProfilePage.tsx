@@ -198,7 +198,7 @@ export default function StudentProfilePage() {
 
       <div className="p-4 space-y-4">
         {/* Quick Actions */}
-        <div className="grid grid-cols-6 gap-2">
+        <div className="grid grid-cols-4 gap-2">
           <ActionButton icon={<Printer className="h-4 w-4" />} label="Print Status" onClick={handlePrintFinancial} />
           <ActionButton icon={<IndianRupee className="h-4 w-4" />} label="Collect Fee" onClick={() => setShowCollect(true)} color="success" />
           <ActionButton icon={<Printer className="h-4 w-4" />} label="Last Receipt" onClick={handlePrintLastTxn} />
