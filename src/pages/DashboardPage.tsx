@@ -1,8 +1,15 @@
+import { useState } from 'react';
 import { useStudents, useBalances, useTransactions, useExpenses, useStaff, useConfig } from '@/hooks/useSheetData';
 import { formatCurrency } from '@/lib/format';
-import { Users, IndianRupee, TrendingDown, AlertTriangle, ArrowUpRight, Loader2, Wallet, UserCog, CalendarDays } from 'lucide-react';
+import { Users, IndianRupee, TrendingDown, AlertTriangle, ArrowUpRight, Loader2, Wallet, UserCog, CalendarDays, MessageCircle, Printer, Edit2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { printContent } from '@/lib/print';
+import { sendNativeAction } from '@/lib/native-bridge';
+import { buildLastReceiptMessage } from '@/lib/whatsapp';
+import { htmlToImage, createReceiptElement } from '@/lib/share';
 
 export default function DashboardPage() {
   const { data: students = [], isLoading: loadingStudents } = useStudents();
@@ -12,11 +19,14 @@ export default function DashboardPage() {
   const { data: staff = [] } = useStaff();
   const { data: config = [] } = useConfig();
   const navigate = useNavigate();
+  const [showAllTxns, setShowAllTxns] = useState(false);
+  const [selectedTxn, setSelectedTxn] = useState<any>(null);
+  const [showTxnActions, setShowTxnActions] = useState(false);
 
   const isLoading = loadingStudents || loadingBalances || loadingTxns;
 
-  const schoolName = config.find(c => c.Key === 'school_name')?.Value || 'K D Memorial';
-  const academicYear = config.find(c => c.Key === 'academic_year')?.Value || '2025-26';
+  const schoolName = String(config.find(c => c.Key === 'school_name')?.Value || 'K D Memorial');
+  const academicYear = String(config.find(c => c.Key === 'academic_year')?.Value || '2025-26');
 
   const activeStudents = students.length;
   const totalCollected = transactions.reduce((s, t) => s + (Number(t.Amount) || 0), 0);
@@ -236,12 +246,23 @@ export default function DashboardPage() {
       {/* Recent Payments */}
       {transactions.length > 0 && (
         <section className="animate-float-in" style={{ animationDelay: '500ms' }}>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Recent Payments</h3>
+          <button onClick={() => setShowAllTxns(true)} className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1 hover:text-primary">
+            Recent Payments <ArrowUpRight className="h-3 w-3" />
+          </button>
           <div className="space-y-2">
             {transactions.slice(-5).reverse().map((txn, i) => {
               const student = students.find(s => s['Roll No.'] === txn['Roll No.']);
+              const balance = balances.find(b => b['Roll No.'] === txn['Roll No.']);
+              const outstanding = Number(balance?.Balance) || 0;
               return (
-                <div key={i} className="bg-card rounded-xl p-3 neu-raised-sm flex items-center justify-between">
+                <button
+                  key={i}
+                  onClick={() => {
+                    setSelectedTxn({ txn, student, balance, outstanding });
+                    setShowTxnActions(true);
+                  }}
+                  className="w-full bg-card rounded-xl p-3 neu-raised-sm flex items-center justify-between text-left hover:bg-primary/5"
+                >
                   <div className="flex items-center gap-3">
                     <div className="h-9 w-9 rounded-xl bg-success/10 flex items-center justify-center">
                       <IndianRupee className="h-4 w-4 text-success" />
@@ -252,12 +273,158 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <p className="text-sm font-bold text-success">{formatCurrency(Number(txn.Amount))}</p>
-                </div>
+                </button>
               );
             })}
           </div>
         </section>
       )}
+
+      {/* All Transactions Dialog */}
+      <Dialog open={showAllTxns} onOpenChange={setShowAllTxns}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-extrabold">All Transactions</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            {transactions.slice().reverse().map((txn, i) => {
+              const student = students.find(s => s['Roll No.'] === txn['Roll No.']);
+              const balance = balances.find(b => b['Roll No.'] === txn['Roll No.']);
+              const outstanding = Number(balance?.Balance) || 0;
+              return (
+                <button
+                  key={i}
+                  onClick={() => {
+                    setSelectedTxn({ txn, student, balance, outstanding });
+                    setShowAllTxns(false);
+                    setTimeout(() => setShowTxnActions(true), 300);
+                  }}
+                  className="w-full bg-card rounded-xl p-3 neu-raised-sm flex items-center justify-between text-left hover:bg-primary/5"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-success/10 flex items-center justify-center">
+                      <IndianRupee className="h-4 w-4 text-success" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{student?.['Student Name'] || `Roll #${txn['Roll No.']}`}</p>
+                      <p className="text-[10px] text-muted-foreground">{txn['Receipt No.']} · {txn.Mode} · {txn.Date}</p>
+                    </div>
+                  </div>
+                  <p className="text-sm font-bold text-success">{formatCurrency(Number(txn.Amount))}</p>
+                </button>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transaction Actions Dialog */}
+      <Dialog open={showTxnActions} onOpenChange={setShowTxnActions}>
+        <DialogContent className="max-w-sm mx-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-extrabold">
+              {selectedTxn?.student?.['Student Name'] || `Roll #${selectedTxn?.txn?.['Roll No.']}`}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground text-center">
+              Receipt: {selectedTxn?.txn?.['Receipt No.']} · {selectedTxn?.txn?.Date} · {formatCurrency(Number(selectedTxn?.txn?.Amount))}
+            </p>
+            <Button
+              variant="outline"
+              className="w-full rounded-xl h-12 font-semibold justify-start"
+              onClick={() => {
+                if (!selectedTxn?.balance || !selectedTxn?.student) return;
+                const html = `
+                  <h1>${schoolName}</h1>
+                  <div class="subtitle">Fee Receipt — ${academicYear}</div>
+                  <div class="divider"></div>
+                  <div class="row"><span class="label">Receipt No.</span><span class="value">${selectedTxn.txn['Receipt No.']}</span></div>
+                  <div class="row"><span class="label">Date</span><span class="value">${selectedTxn.txn.Date}</span></div>
+                  <div class="divider"></div>
+                  <div class="row"><span class="label">Student</span><span class="value">${selectedTxn.student['Student Name']}</span></div>
+                  <div class="row"><span class="label">Father</span><span class="value">${selectedTxn.student['Father Name']}</span></div>
+                  <div class="row"><span class="label">Class</span><span class="value">${selectedTxn.student.Class}</span></div>
+                  <div class="row"><span class="label">Roll No.</span><span class="value">${selectedTxn.student['Roll No.']}</span></div>
+                  <div class="divider"></div>
+                  <div class="row"><span class="label">Total Fees</span><span class="value">${formatCurrency(Number(selectedTxn.balance.Total) || 0)}</span></div>
+                  <div class="row"><span class="label">Total Received</span><span class="value" style="color:green">${formatCurrency(Number(selectedTxn.balance['Rec.']) || 0)}</span></div>
+                  <div class="row total-row"><span class="label">Amount Paid</span><span class="value" style="color:green">${formatCurrency(Number(selectedTxn.txn.Amount))}</span></div>
+                  <div class="row"><span class="label">Mode</span><span class="value">${selectedTxn.txn.Mode}</span></div>
+                  ${selectedTxn.txn.Remarks ? `<div class="row"><span class="label">Remarks</span><span class="value">${selectedTxn.txn.Remarks}</span></div>` : ''}
+                  <div class="divider"></div>
+                  <div class="row total-row"><span class="label">Balance Due</span><span class="value" style="color:${selectedTxn.outstanding > 0 ? 'red' : 'green'}">${formatCurrency(selectedTxn.outstanding)}</span></div>
+                `;
+                printContent(`Receipt - ${selectedTxn.txn['Receipt No.']}`, html);
+                setShowTxnActions(false);
+              }}
+            >
+              <Printer className="h-4 w-4 mr-2" /> Print Receipt
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full rounded-xl h-12 font-semibold justify-start"
+              onClick={async () => {
+                if (!selectedTxn?.balance || !selectedTxn?.student || !selectedTxn?.txn) return;
+                const phone = String(selectedTxn.student.Mobile || '');
+                if (!phone) { alert('No mobile number available'); return; }
+                const cleaned = phone.replace(/\D/g, '').slice(-10);
+                if (cleaned.length !== 10) { alert('Invalid phone number'); return; }
+                
+                // Create receipt element and convert to image
+                const receiptEl = createReceiptElement(
+                  String(schoolName),
+                  selectedTxn.student['Student Name'],
+                  selectedTxn.student['Father Name'],
+                  selectedTxn.student.Class,
+                  selectedTxn.student['Roll No.'],
+                  selectedTxn.txn['Receipt No.'],
+                  selectedTxn.txn.Date,
+                  Number(selectedTxn.balance.Total) || 0,
+                  Number(selectedTxn.balance['Rec.']) || 0,
+                  Number(selectedTxn.txn.Amount),
+                  selectedTxn.txn.Mode,
+                  selectedTxn.outstanding,
+                  String(academicYear),
+                  selectedTxn.txn.Remarks
+                );
+                document.body.appendChild(receiptEl);
+                const imageDataUrl = await htmlToImage(receiptEl);
+                document.body.removeChild(receiptEl);
+                
+                const caption = `Fee Receipt - ${selectedTxn.txn['Receipt No.']} - ${selectedTxn.student['Student Name']} - ${formatCurrency(Number(selectedTxn.txn.Amount))}`;
+                
+                // Use native share or WhatsApp
+                try {
+                  const { sendNativeAction } = await import('@/lib/native-bridge');
+                  sendNativeAction({
+                    action: 'whatsapp',
+                    phone: `91${cleaned}`,
+                    text: caption
+                  });
+                } catch {
+                  window.open(`https://wa.me/91${cleaned}?text=${encodeURIComponent(caption)}`, '_blank');
+                }
+                setShowTxnActions(false);
+              }}
+            >
+              <MessageCircle className="h-4 w-4 mr-2" /> Share on WhatsApp
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full rounded-xl h-12 font-semibold justify-start"
+              onClick={() => {
+                if (selectedTxn?.student) {
+                  navigate(`/students/${selectedTxn.student['Roll No.']}`);
+                  setShowTxnActions(false);
+                }
+              }}
+            >
+              <Edit2 className="h-4 w-4 mr-2" /> Edit Student
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
