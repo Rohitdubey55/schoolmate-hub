@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStudents, useBalances, useTransactions, useExpenses, useStaff, useConfig } from '@/hooks/useSheetData';
+import { useStudents, useBalances, useTransactions, useExpenses, useStaff, useConfig, useUpdateTransaction } from '@/hooks/useSheetData';
 import { formatCurrency } from '@/lib/format';
 import { Users, IndianRupee, TrendingDown, AlertTriangle, ArrowUpRight, Loader2, Wallet, UserCog, CalendarDays, MessageCircle, Printer, Edit2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -26,6 +26,7 @@ export default function DashboardPage() {
   const [selectedTxn, setSelectedTxn] = useState<any>(null);
   const [showTxnActions, setShowTxnActions] = useState(false);
   const [showEditTxn, setShowEditTxn] = useState(false);
+  const updateTxnMutation = useUpdateTransaction();
 
   const isLoading = loadingStudents || loadingBalances || loadingTxns;
 
@@ -446,9 +447,12 @@ export default function DashboardPage() {
             transaction={selectedTxn?.txn}
             balance={selectedTxn?.balance}
             onSave={async (data) => {
-              // Handle save - would need to integrate with API
-              console.log('Save transaction:', data);
-              setShowEditTxn(false);
+              try {
+                await updateTxnMutation.mutateAsync(data);
+                setShowEditTxn(false);
+              } catch (e: any) {
+                alert('Error updating transaction: ' + e.message);
+              }
             }}
             onCancel={() => setShowEditTxn(false)}
           />
@@ -545,8 +549,24 @@ function EditTransactionForm({ transaction, balance, onSave, onCancel }: {
     date: transaction?.Date || new Date().toISOString().split('T')[0],
     remarks: transaction?.Remarks || '',
   });
+  const [saving, setSaving] = useState(false);
 
   if (!transaction) return null;
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave({
+        id: transaction.id,
+        Amount: Number(form.amount),
+        Mode: form.mode,
+        Date: form.date,
+        Remarks: form.remarks,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -594,8 +614,8 @@ function EditTransactionForm({ transaction, balance, onSave, onCancel }: {
         <Button variant="outline" onClick={onCancel} className="flex-1 rounded-xl">
           Cancel
         </Button>
-        <Button onClick={() => onSave(form)} className="flex-1 rounded-xl">
-          Save
+        <Button onClick={handleSave} disabled={saving} className="flex-1 rounded-xl">
+          {saving ? 'Saving...' : 'Save'}
         </Button>
       </div>
     </div>

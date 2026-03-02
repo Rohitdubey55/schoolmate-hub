@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useConfig, useUpdateConfig, useBalances, useUpdateBalance } from '@/hooks/useSheetData';
-import { ArrowLeft, Save, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -93,6 +93,16 @@ export default function SettingsPage() {
     });
   };
 
+  const handleClearCache = () => {
+    if (!confirm('This will clear all cached data and reload the app. Continue?')) return;
+    // Clear localStorage
+    localStorage.clear();
+    // Clear sessionStorage
+    sessionStorage.clear();
+    // Reload the page
+    window.location.reload();
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -117,6 +127,21 @@ export default function SettingsPage() {
       </div>
 
       <div className="p-4 space-y-4">
+        {/* Clear Cache */}
+        <section className="bg-card rounded-2xl p-4 space-y-3 neu-raised border border-destructive/20">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-destructive">Clear Cache & Restart</h3>
+          <p className="text-[10px] text-muted-foreground">
+            Clear all cached data and reload the app. This will refresh all data from the server.
+          </p>
+          <Button
+            onClick={handleClearCache}
+            variant="destructive"
+            className="w-full rounded-xl h-11 font-bold"
+          >
+            <Trash2 className="h-4 w-4 mr-2" /> Clear Cache & Restart
+          </Button>
+        </section>
+
         {/* General Settings */}
         <section className="bg-card rounded-2xl p-4 space-y-3 neu-raised">
           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">General</h3>

@@ -71,6 +71,20 @@ export function useAddTransaction() {
   });
 }
 
+export function useUpdateTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, any>) => {
+      const { id, ...rest } = data;
+      return postSheetData('Student_Transactions', 'update', { id, payload: rest });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['balances'] });
+    },
+  });
+}
+
 export function useAddExpense() {
   const qc = useQueryClient();
   return useMutation({
