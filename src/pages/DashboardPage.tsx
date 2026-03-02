@@ -226,7 +226,7 @@ export default function DashboardPage() {
       )}
 
       {/* Top Outstanding Dues */}
-      <section className="animate-float-in" style={{ animationDelay: '400ms' }}>
+      <section className="bg-card rounded-2xl p-4 neu-raised animate-float-in" style={{ animationDelay: '400ms' }}>
         <button onClick={() => toggleSection('topOutstanding')} className="flex items-center justify-between w-full mb-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Top Outstanding</h3>
           {expandedSections.topOutstanding ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
@@ -264,7 +264,7 @@ export default function DashboardPage() {
 
       {/* Recent Payments */}
       {transactions.length > 0 && (
-        <section className="animate-float-in" style={{ animationDelay: '500ms' }}>
+        <section className="bg-card rounded-2xl p-4 neu-raised animate-float-in" style={{ animationDelay: '500ms' }}>
           <button onClick={() => toggleSection('recentPayments')} className="flex items-center justify-between w-full mb-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Recent Payments</h3>
             {expandedSections.recentPayments ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
