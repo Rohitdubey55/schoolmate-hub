@@ -4,7 +4,7 @@ import { useStudents, useBalances, useTransactions, useAddTransaction, useUpdate
 import { formatCurrency } from '@/lib/format';
 import { ArrowLeft, Printer, IndianRupee, MessageCircle, Edit2, Save, X, Loader2, Copy } from 'lucide-react';
 import { PAYMENT_MODES, CLASS_LIST } from '@/types/school';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -26,6 +26,7 @@ export default function StudentProfilePage() {
   const updateStudentMutation = useUpdateStudent();
   const updateBalanceMutation = useUpdateBalance();
   const [showCollect, setShowCollect] = useState(false);
+  const [showWhatsAppMenu, setShowWhatsAppMenu] = useState(false);
   const [editing, setEditing] = useState(false);
   const { toast } = useToast();
 
@@ -201,9 +202,7 @@ export default function StudentProfilePage() {
           <ActionButton icon={<Printer className="h-4 w-4" />} label="Print Status" onClick={handlePrintFinancial} />
           <ActionButton icon={<IndianRupee className="h-4 w-4" />} label="Collect Fee" onClick={() => setShowCollect(true)} color="success" />
           <ActionButton icon={<Printer className="h-4 w-4" />} label="Last Receipt" onClick={handlePrintLastTxn} />
-          <ActionButton icon={<MessageCircle className="h-4 w-4" />} label="WhatsApp" onClick={handleWhatsApp} color="success" />
-          <ActionButton icon={<MessageCircle className="h-4 w-4" />} label="WA Status" onClick={handleWhatsAppStatus} />
-          <ActionButton icon={<MessageCircle className="h-4 w-4" />} label="WA Receipt" onClick={handleWhatsAppReceipt} />
+          <ActionButton icon={<MessageCircle className="h-4 w-4" />} label="WhatsApp" onClick={() => setShowWhatsAppMenu(true)} color="success" />
         </div>
 
         {/* Financial Summary */}
@@ -269,6 +268,53 @@ export default function StudentProfilePage() {
           ))}
         </div>
       </div>
+
+      {/* WhatsApp Options Dialog */}
+      <Dialog open={showWhatsAppMenu} onOpenChange={setShowWhatsAppMenu}>
+        <DialogContent className="max-w-sm mx-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-extrabold">WhatsApp Options</DialogTitle>
+            <DialogDescription className="text-xs">
+              Choose an option to send to {student['Father Name']}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Button
+              variant="outline"
+              className="w-full rounded-xl h-12 font-semibold justify-start"
+              onClick={() => {
+                setShowWhatsAppMenu(false);
+                handleWhatsAppStatus();
+              }}
+            >
+              <MessageCircle className="h-4 w-4 mr-2" />
+              Send Current Status
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full rounded-xl h-12 font-semibold justify-start"
+              onClick={() => {
+                setShowWhatsAppMenu(false);
+                handleWhatsApp();
+              }}
+            >
+              <MessageCircle className="h-4 w-4 mr-2" />
+              Send Fee Reminder
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full rounded-xl h-12 font-semibold justify-start"
+              onClick={() => {
+                setShowWhatsAppMenu(false);
+                handleWhatsAppReceipt();
+              }}
+            >
+              <MessageCircle className="h-4 w-4 mr-2" />
+              Send Last Receipt
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Collect Fee Dialog */}
       <CollectFeeForStudentDialog
